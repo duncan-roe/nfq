@@ -1,0 +1,26 @@
+#!/usr/sbin/nft -f
+flush ruleset
+
+# filter table (Firewall function)
+# ====== ===== ========= =========
+
+table ip IP \
+{
+  # A chain to reject connections to bogus.net
+
+  chain FILTER_OUTPUT \
+  {
+    type filter hook output priority filter; policy accept;
+    ct state new ip daddr 10.255.254.0/24 counter reject with icmp type admin-prohibited
+  }                                ;# chain FILTER_OUTPUT
+
+  # A chain to mangle DNS responses
+
+  chain FILTER_INPUT \
+  {
+    type filter hook input priority filter; policy accept;
+    iif "lo" udp sport domain counter queue num 42 bypass
+    iif "lo" udp dport domain counter queue num 42 bypass
+  }                                ;# chain FILTER_INPUT
+}                                  ;# table ip IP
+list ruleset
