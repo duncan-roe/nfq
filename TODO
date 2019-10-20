@@ -1,0 +1,9 @@
+Do command-line parsing properly (-q<n>, --queue=<n> for a start)
+Open log files (not via syslog)
+Have log levels (e.g.non-accepts, A queries only, nothing ...)
+Retry on EINTR to syscalls
+Update netfilter libraries to retry on EINTR to syscalls
+Restart log on signal (needs EINTR code)
+Re-read nfq.conf on signal (needs EINTR code)
+Should daemonize itself
+Option not to daemonize

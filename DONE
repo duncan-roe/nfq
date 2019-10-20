@@ -1,0 +1,3 @@
+Allow wildcarded targets (1st component at least, maybe 2nd)
+ Better, have implicit wildcarding: end of URL matches, e.g. doubleclick.net
+Put timestamps on messages
