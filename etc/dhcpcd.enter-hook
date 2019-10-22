@@ -1,0 +1,83 @@
+# /etc/dhcpcd.enter-hook - replacement for
+#   /lib/dhcpcd/dhcpcd-hooks/20-resolv.conf
+#
+# This script takes action where the original would have modified resolv.conf
+#
+# In a system running a local (forward-only) DNS for queries diverted by nfq,
+# we want to leave resolv.conf (pointing to localhost) unaltered by dhcp.
+#
+# Instead, this script modifies the global forwarders line in /etc/named.
+#
+# See man dhcpcd and man dhcpcd-run-hooks
+
+# Precede function names with nfq_ to not pollute the namespace
+
+nfq_main()\
+{
+  # Honour -C named.conf
+  echo $skip_hooks | grep -q named.conf && return
+
+  # Update named.conf on if_up
+  if $if_up
+  then
+    if_up=false
+    nfq_munge_named_conf
+  fi
+
+  # Restore named.conf on if_down
+  if $if_down
+  then
+    if_down=false
+    nfq_restore_named_conf
+  fi
+}
+
+nfq_munge_named_conf()\
+{
+  # We are only interested in new domain name servers
+  # My sed-fu isn't up to this, so I'll use Q
+  # Patches Thoughtfully Considered
+
+  [ -n "$new_domain_name_servers" ] || return 0
+
+  # Empty out the global (i.e. first) forwarders line
+  q -oqi'l,forwarders^J^NC^NU^G{^X^K };^Js^J' /etc/named.conf 2>/dev/null
+
+  # Add new domain name servers as forwarders in the order given
+  for i in $new_domain_name_servers
+  do
+    q -oqi'l,forwarders^J^NC^NU^G}^E'"$i; "'^Js^J' /etc/named.conf 2>/dev/null
+  done
+
+  # Restart named to read new conf
+  service_cmd bind restart
+}
+
+nfq_restore_named_conf()\
+{
+  # If the system owner has created /etc/named.conf.orig, reinstate that.
+  # If /etc/named.conf is under revision control, reinstate from there
+  # (Currently, only RCS is supported).
+  # Otherwise, report failure
+
+  if [ -e /etc/named.conf.orig ]
+  then
+    comp_file /etc/named.conf.orig /etc/named.conf && return 0
+    cp -a /etc/named.conf.orig /etc/named.conf
+    service_cmd bind restart
+    return
+  fi
+
+  if [ -e /etc/RCS/named.conf,v ]
+  then
+    rcsdiff /etc/named.conf >/dev/null 2>&1 && return 0
+    co -f -M /etc/named.conf && service_cmd bind restart
+    return
+  fi
+
+  return 1
+}
+
+# Start the show
+
+nfq_main
