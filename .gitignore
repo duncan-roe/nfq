@@ -2,3 +2,6 @@
 t5*
 RCS
 URL
+nfq
+*.d
+*.o

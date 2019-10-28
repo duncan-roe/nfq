@@ -306,9 +306,7 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
   nlh = nfq_hdr_put(NFQNL_MSG_VERDICT, queue_num);
 
   if (accept && pktb_mangled(pktb))
-  {
     nfq_nlmsg_verdict_put_pkt(nlh, pktb_data(pktb), plen);
-  }                                /* if (accept && pktb_mangled(pktb)) */
   nfq_nlmsg_verdict_put(nlh, id, accept ? NF_ACCEPT : NF_DROP);
 
   if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)

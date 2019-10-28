@@ -41,16 +41,16 @@ nfq_munge_named_conf()\
   [ -n "$new_domain_name_servers" ] || return 0
 
   # Empty out the global (i.e. first) forwarders line
-  q -oqi'l,forwarders^J^NC^NU^G{^X^K };^Js^J' /etc/named.conf 2>/dev/null
+  /usr/local/bin/q -oqi'l,forwarders^J^NC^NU^G{^X^K };^Js^J' /etc/named.conf 2>/dev/null
 
   # Add new domain name servers as forwarders in the order given
   for i in $new_domain_name_servers
   do
-    q -oqi'l,forwarders^J^NC^NU^G}^E'"$i; "'^Js^J' /etc/named.conf 2>/dev/null
+    /usr/local/bin/q -oqi'l,forwarders^J^NC^NU^G}^E'"$i; "'^Js^J' /etc/named.conf 2>/dev/null
   done
 
   # Restart named to read new conf
-  service_cmd bind restart
+  service_cmd bind status >/dev/null 2>&1 && service_cmd bind restart
 }
 
 nfq_restore_named_conf()\
@@ -79,5 +79,13 @@ nfq_restore_named_conf()\
 }
 
 # Start the show
+#
+#exec >>/tmp/dhcpcd-enter-hook.out 2>&1
+#echo "============================"
+#date
+#env | grep -E -v "PATH|SHLVL|PWD|[' ]"
+#set -x
 
 nfq_main
+
+#set +x
