@@ -23,17 +23,3 @@ DNS                        KERNEL (NFT RULESET)                         BROWSER
                                       |  REJECT (admin prohibited)         |
                                       |--->--->--->--->--->--->--->--->--->|
                                       |         (or port not assigned &c.) |
-                                      |                                    |
-                                      |
-                                      |
-                                      |
-                                      |                                   CTOP
-                                      |                                    |
-                                      |                                    |
-                                      |  nft list set IP top_set           |
-                                      |....................................|
-                                      |                                    |
-                                      |                                    |
-                                      |                                    |
-                                      |                                    |
-                                      |                                    |
