@@ -1,14 +1,14 @@
 $ORIGIN .
 $TTL 86400	; 1 day
-bogus.net		IN SOA	tallstar. duncan_roe.optusnet.com.au. (
+bogus.nit		IN SOA	tallstar. fred_nerk.bogus.nit. (
 				343	   ; serial
 				10800	   ; refresh (3 hours)
 				900	   ; retry (15 minutes)
 				604800	   ; expire (1 week)
 				86400	   ; minimum (1 day)
 				)
-			NS	tallstar.bogus.net.
-$ORIGIN bogus.net.
+			NS	tallstar.bogus.nit.
+$ORIGIN bogus.nit.
 $TTL 302400	; 3 days 12 hours
 sys3			A	10.255.254.1
 			A	10.255.254.2
