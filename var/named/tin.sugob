@@ -30,3 +30,7 @@ $TTL 302400	; 3 days 12 hours
 20			PTR	sys5.bogus.nit.
 21			PTR	sys5.bogus.nit.
 22			PTR	sys5.bogus.nit.
+23			PTR	sys4.bogus.nit.
+24			PTR	sys4.bogus.nit.
+25			PTR	sys4.bogus.nit.
+26			PTR	sys4.bogus.nit.
