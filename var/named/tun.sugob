@@ -1,0 +1,36 @@
+$ORIGIN .
+$TTL 86400	; 1 day
+254.255.10.in-addr.arpa IN SOA	tallstar. fred_nerk.bogus.nut. (
+				228	   ; serial
+				10800	   ; refresh (3 hours)
+				900	   ; retry (15 minutes)
+				604800	   ; expire (1 week)
+				86400	   ; minimum (1 day)
+				)
+			NS	tallstar.bogus.nut.
+$ORIGIN 253.255.10.in-addr.arpa.
+$TTL 302400	; 3 days 12 hours
+1			PTR	sys3.bogus.nut.
+2			PTR	sys3.bogus.nut.
+3			PTR	sys3.bogus.nut.
+4			PTR	sys1.bogus.nut.
+6			PTR	tallstar.bogus.nut.
+7			PTR	sys2.bogus.nut.
+8			PTR	sys2.bogus.nut.
+10			PTR	sys8.bogus.nut.
+11			PTR	sys8.bogus.nut.
+12			PTR	sys8.bogus.nut.
+13			PTR	sys8.bogus.nut.
+14			PTR	sys8.bogus.nut.
+15			PTR	sys8.bogus.nut.
+16			PTR	sys8.bogus.nut.
+17			PTR	sys8.bogus.nut.
+18			PTR	sys5.bogus.nut.
+19			PTR	sys5.bogus.nut.
+20			PTR	sys5.bogus.nut.
+21			PTR	sys5.bogus.nut.
+22			PTR	sys5.bogus.nut.
+23			PTR	sys4.bogus.nut.
+24			PTR	sys4.bogus.nut.
+25			PTR	sys4.bogus.nut.
+26			PTR	sys4.bogus.nut.
