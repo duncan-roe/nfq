@@ -6,12 +6,12 @@ flush ruleset
 
 table ip IP \
 {
-  # A chain to reject connections to bogus.nit
+  # A chain to reject connections to bogus.nit&nut
 
   chain FILTER_OUTPUT \
   {
     type filter hook output priority filter; policy accept;
-    ct state new ip daddr 10.255.254.0/24 counter reject with icmp type admin-prohibited
+    ct state new jump CT_STATE_NEW
   }
 
   # A chain to mangle DNS requests and responses
@@ -19,8 +19,22 @@ table ip IP \
   chain FILTER_INPUT \
   {
     type filter hook input priority filter; policy accept;
-    iif "lo" udp dport domain counter queue num 42 bypass
-    iif "lo" udp sport domain counter queue num 42 bypass
+    iif "lo" meta l4proto udp jump IIF_LO
+  }
+  # A chain to process packets with ct state new
+
+  chain CT_STATE_NEW \
+  {
+    ip daddr 10.255.254.0/24 counter reject with icmp type admin-prohibited
+    ip daddr 10.255.253.0/24 counter reject with icmp type port-unreachable
+  }
+
+  # A chain to examine packets on local interface
+
+  chain IIF_LO \
+  {
+    udp dport domain counter queue num 42 bypass
+    udp sport domain counter queue num 42 bypass
   }
 }
 list ruleset
