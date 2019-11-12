@@ -77,7 +77,6 @@ static struct mnl_socket *nl;
 static char buf[0xffff + 4096];
 static char txbuf[sizeof buf];
 static struct pkt_buff *pktb;
-static uint16_t plen;
 static chainbase saved_queries = { &saved_queries, &saved_queries };
 static chainbase free_blocks = { &free_blocks, &free_blocks };
 static struct advert *ads = NULL;
@@ -306,7 +305,7 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
   nlh = nfq_hdr_put(NFQNL_MSG_VERDICT, queue_num);
 
   if (accept && pktb_mangled(pktb))
-    nfq_nlmsg_verdict_put_pkt(nlh, pktb_data(pktb), plen);
+    nfq_nlmsg_verdict_put_pkt(nlh, pktb_data(pktb), pktb_len(pktb));
   nfq_nlmsg_verdict_put(nlh, id, accept ? NF_ACCEPT : NF_DROP);
 
   if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
@@ -404,6 +403,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   struct savedq *sq;
   char *component[128];            /* Enough for a.b.c.d... */
   int num_components;
+  uint16_t plen;
 
   if (nfq_nlmsg_parse(nlh, attr) < 0)
   {
@@ -597,7 +597,6 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
             "nfq_udp_mangle_ipv4 FAIL: ");
           goto log_packet;
         }                          /* if (!nc) */
-        plen += rep_len - match_len;
         action = "RI";
         putblk(sq = gfeunchn(sq));
         break;
@@ -631,7 +630,6 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
         putblk(sq);
         goto log_packet;
       }                            /* if (!nc) */
-      plen += rep_len - match_len;
       action = "DV";
       gfechain(sq, &saved_queries);
     }                              /* (aa) */
