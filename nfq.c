@@ -12,10 +12,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <linux/ip.h>
 #include <arpa/inet.h>
 #include <linux/types.h>
-#include <linux/ip.h>
 #include <libmnl/libmnl.h>
+#include <linux/if_ether.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter/nfnetlink.h>
 #include <libnetfilter_queue/pktbuff.h>
@@ -460,7 +461,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   {
     nc += snprintf(record_buf + nc, sizeof record_buf - nc,
       ", checksum not ready");
-    if (ntohs(ph->hw_protocol) != 0x0800)
+    if (ntohs(ph->hw_protocol) != ETH_P_IP)
       normal = false;
   }                                /* if (skbinfo & NFQA_SKB_CSUMNOTREADY) */
   if (!normal)
