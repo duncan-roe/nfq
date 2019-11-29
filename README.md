@@ -1,3 +1,4 @@
 # nfq
 nft-based URL moderator  
-nfq need a recent version of libnetfilter_queue. Best clone git://git.netfilter.org/libnetfilter_queue
+nfq needs a recent version of libnetfilter\_queue. Best clone the
+[libnetfilter\_queue Git repository](https://git.netfilter.org/libnetfilter\_queue)
