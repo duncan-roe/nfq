@@ -25,6 +25,10 @@
 #include <libnetfilter_queue/libnetfilter_queue_udp.h>
 #include <libnetfilter_queue/libnetfilter_queue_ipv6.h>
 
+/* Macros */
+
+#define NUM_TESTS 1
+
 /* If bool is a macro, get rid of it */
 
 #ifdef bool
@@ -33,13 +37,11 @@
 #undef false
 #endif
 
+/* Headers */
+
 #include "prototypes.h"
 #include "typedefs.h"
 #include "logger.h"
-
-/* Macros */
-
-#define OLD 5                      /* Seconds */
 
 /* Typedefs */
 
@@ -68,9 +70,11 @@ static struct mnl_socket *nl;
 static char buf[0xffff + 4096];
 static char txbuf[sizeof buf];
 static struct pkt_buff *pktb;
+static bool tests[NUM_TESTS] = { false };
 
 /* Static prototypes */
 
+static void usage(void);
 static int queue_cb(const struct nlmsghdr *nlh, void *data);
 static void nfq_send_verdict(int queue_num, uint32_t id, bool accept);
 static struct nlmsghdr *nfq_hdr_put(int type, uint32_t queue_num);
@@ -83,13 +87,34 @@ main(int argc, char *argv[])
   struct nlmsghdr *nlh;
   int ret;
   unsigned int portid, queue_num;
+  int i;
 
-  if (argc != 2)
+  while ((i = getopt(argc, argv, "TUht:")) != -1)
   {
-    fprintf(stderr, "Usage: %s <queue_num>\n", argv[0]);
+    switch (i)
+    {
+      case 'h':
+        usage();
+        return 0;
+
+      case 't':
+        ret = atoi(optarg);
+        if (ret < 0 || ret > NUM_TESTS)
+        {
+          fprintf(stderr, "Test %d is out of range\n", ret);
+          exit(EXIT_FAILURE);
+        }                          /* if (ret < 0 || ret > NUM_TESTS) */
+        tests[ret] = true;
+        break;
+    }                              /* switch (i) */
+  }                                /* while () */
+
+  if (argc == optind)
+  {
+    fputs("Missing queue number\n", stderr);
     exit(EXIT_FAILURE);
   }
-  queue_num = atoi(argv[1]);
+  queue_num = atoi(argv[optind]);
 
   setlinebuf(stdout);
 
@@ -186,9 +211,17 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
 
   nlh = nfq_hdr_put(NFQNL_MSG_VERDICT, queue_num);
 
-  if (accept && pktb_mangled(pktb))
-    nfq_nlmsg_verdict_put_pkt(nlh, pktb_data(pktb), pktb_len(pktb));
-  nfq_nlmsg_verdict_put(nlh, id, accept ? NF_ACCEPT : NF_DROP);
+  if (tests[0])
+  {
+    nfq_nlmsg_verdict_put_mark(nlh, 0xbeef);
+    nfq_nlmsg_verdict_put(nlh, id, NF_REPEAT);
+  }                                /* if (tests[0] */
+  else
+  {
+    if (accept && pktb_mangled(pktb))
+      nfq_nlmsg_verdict_put_pkt(nlh, pktb_data(pktb), pktb_len(pktb));
+    nfq_nlmsg_verdict_put(nlh, id, accept ? NF_ACCEPT : NF_DROP);
+  }                                /* if (tests[0] else */
 
   if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
   {
@@ -313,3 +346,16 @@ send_verdict:
 
   return MNL_CB_OK;
 }
+
+/* ********************************** usage ********************************* */
+
+static void
+usage(void)
+{
+  puts("Usage: nfq6 [-TUh] [-t <test #>] queue_number\n" /*  */
+    "  -T: use TCP\n"              /*  */
+    "  -U: use UDP (default\n"     /*  */
+    "  -h: give this help\n"       /*  */
+    "  -t <n>: Do test <n>. Tests are:\n" /*  */
+    "    0: Set packet mark and give verdict NF_REPEAT");
+}                                  /* static void usage(void) */
