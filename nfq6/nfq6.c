@@ -27,7 +27,7 @@
 
 /* Macros */
 
-#define NUM_TESTS 1
+#define NUM_TESTS 2
 
 /* If bool is a macro, get rid of it */
 
@@ -71,6 +71,7 @@ static char buf[0xffff + 4096];
 static char txbuf[sizeof buf];
 static struct pkt_buff *pktb;
 static bool tests[NUM_TESTS] = { false };
+static uint32_t packet_mark;
 
 /* Static prototypes */
 
@@ -208,21 +209,42 @@ static void
 nfq_send_verdict(int queue_num, uint32_t id, bool accept)
 {
   struct nlmsghdr *nlh;
+  bool done = false;
 
   nlh = nfq_hdr_put(NFQNL_MSG_VERDICT, queue_num);
 
-  if (tests[0])
+  if (!accept)
+  {
+    nfq_nlmsg_verdict_put(nlh, id, NF_DROP);
+    goto send_verdict;
+  }                                /* if (!accept) */
+
+  if (pktb_mangled(pktb))
+    nfq_nlmsg_verdict_put_pkt(nlh, pktb_data(pktb), pktb_len(pktb));
+
+  if (tests[0] && !packet_mark)
   {
     nfq_nlmsg_verdict_put_mark(nlh, 0xbeef);
     nfq_nlmsg_verdict_put(nlh, id, NF_REPEAT);
+    done = true;
   }                                /* if (tests[0] */
-  else
-  {
-    if (accept && pktb_mangled(pktb))
-      nfq_nlmsg_verdict_put_pkt(nlh, pktb_data(pktb), pktb_len(pktb));
-    nfq_nlmsg_verdict_put(nlh, id, accept ? NF_ACCEPT : NF_DROP);
-  }                                /* if (tests[0] else */
 
+  if (tests[1] && !done)
+  {
+    if (packet_mark == 0xfaceb00c)
+      nfq_nlmsg_verdict_put(nlh, id, NF_STOP);
+    else
+    {
+      nfq_nlmsg_verdict_put_mark(nlh, 0xfaceb00c);
+      nfq_nlmsg_verdict_put(nlh, id, NF_REPEAT);
+    }                              /* if (packet_mark == 0xfaceb00c) else */
+    done = true;
+  }                                /* if (tests[1] && !done) */
+
+  if (!done)
+    nfq_nlmsg_verdict_put(nlh, id, NF_ACCEPT);
+
+send_verdict:
   if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
   {
     perror("mnl_socket_send");
@@ -277,6 +299,8 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   plen = mnl_attr_get_payload_len(attr[NFQA_PAYLOAD]);
 
   payload = mnl_attr_get_payload(attr[NFQA_PAYLOAD]);
+
+  packet_mark = attr[NFQA_MARK] ? ntohl(mnl_attr_get_u32(attr[NFQA_MARK])) : 0;
 
   skbinfo =
     attr[NFQA_SKB_INFO] ? ntohl(mnl_attr_get_u32(attr[NFQA_SKB_INFO])) : 0;
@@ -352,10 +376,16 @@ send_verdict:
 static void
 usage(void)
 {
-  puts("Usage: nfq6 [-TUh] [-t <test #>] queue_number\n" /*  */
-    "  -T: use TCP\n"              /*  */
+/* N.B. Trailing empty comments are there to stop gnu indent joining lines */
+  puts("\nUsage: nfq6 [-TUh] [-t <test #>] queue_number\n" /*  */
+    "  -T: use TCP (not implemented yet)\n" /*  */
     "  -U: use UDP (default\n"     /*  */
     "  -h: give this help\n"       /*  */
     "  -t <n>: Do test <n>. Tests are:\n" /*  */
-    "    0: Set packet mark and give verdict NF_REPEAT");
+    "    0: If packet mark is zero, set it to 0xbeef and give verdict " /*  */
+    "NF_REPEAT\n"                  /*  */
+    "    1: If packet mark is not 0xfaceb00c, set it to that and give " /*  */
+    "verdict NF_REPEAT\n"          /*  */
+    "       If packet mark *is* 0xfaceb00c, give verdict NF_STOP" /*  */
+    );
 }                                  /* static void usage(void) */
