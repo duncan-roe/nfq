@@ -27,7 +27,7 @@
 
 /* Macros */
 
-#define NUM_TESTS 2
+#define NUM_TESTS 4
 
 /* If bool is a macro, get rid of it */
 
@@ -158,11 +158,24 @@ main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }
 
+  if (tests[3])
+  {
+    mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS, htonl(NFQA_CFG_F_FAIL_OPEN));
+    mnl_attr_put_u32(nlh, NFQA_CFG_MASK, htonl(NFQA_CFG_F_FAIL_OPEN));
+
+    if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
+    {
+      perror("mnl_socket_send");
+      exit(EXIT_FAILURE);
+    }
+  }                                /* if (tests[3]) */
+
 /* ENOBUFS is signalled to userspace when packets were lost
  * on kernel side.  In most cases, userspace isn't interested
  * in this information, so turn it off.
  */
-  mnl_socket_setsockopt(nl, NETLINK_NO_ENOBUFS, &ret, sizeof(int));
+  if (!tests[2])
+    mnl_socket_setsockopt(nl, NETLINK_NO_ENOBUFS, &ret, sizeof(int));
 
   for (;;)
   {
@@ -170,6 +183,8 @@ main(int argc, char *argv[])
     if (ret == -1)
     {
       perror("mnl_socket_recvfrom");
+      if (errno == ENOBUFS)
+        continue;
       exit(EXIT_FAILURE);
     }
 
@@ -386,6 +401,8 @@ usage(void)
     "NF_REPEAT\n"                  /*  */
     "    1: If packet mark is not 0xfaceb00c, set it to that and give " /*  */
     "verdict NF_REPEAT\n"          /*  */
-    "       If packet mark *is* 0xfaceb00c, give verdict NF_STOP" /*  */
+    "       If packet mark *is* 0xfaceb00c, give verdict NF_STOP\n" /*  */
+    "    2: Allow ENOBUFS to happen; treat as harmless when it does\n" /*  */
+    "    3: Configure NFQA_CFG_F_FAIL_OPEN\n" /*  */
     );
 }                                  /* static void usage(void) */
