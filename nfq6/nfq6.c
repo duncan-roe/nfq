@@ -149,36 +149,16 @@ main(int argc, char *argv[])
   nlh = nfq_hdr_put(NFQNL_MSG_CONFIG, queue_num);
   nfq_nlmsg_cfg_put_params(nlh, NFQNL_COPY_PACKET, 0xffff);
 
-  if (tests[4])
+  mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS,
+    htonl(NFQA_CFG_F_GSO | (tests[3] ? NFQA_CFG_F_FAIL_OPEN : 0)));
+  mnl_attr_put_u32(nlh, NFQA_CFG_MASK,
+    htonl(NFQA_CFG_F_GSO | (tests[3] ? NFQA_CFG_F_FAIL_OPEN : 0)));
+
+  if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
   {
-    mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS,
-      htonl(NFQA_CFG_F_GSO | (tests[3] ? NFQA_CFG_F_FAIL_OPEN : 0)));
-    mnl_attr_put_u32(nlh, NFQA_CFG_MASK,
-      htonl(NFQA_CFG_F_GSO | (tests[3] ? NFQA_CFG_F_FAIL_OPEN : 0)));
-
-    if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
-    {
-      perror("mnl_socket_send");
-      exit(EXIT_FAILURE);
-    }
-  }                                /* if (tests[4]) */
-  else
-  {
-    mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS, htonl(NFQA_CFG_F_GSO));
-    mnl_attr_put_u32(nlh, NFQA_CFG_MASK, htonl(NFQA_CFG_F_GSO));
-
-    if (tests[3])
-    {
-      mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS, htonl(NFQA_CFG_F_FAIL_OPEN));
-      mnl_attr_put_u32(nlh, NFQA_CFG_MASK, htonl(NFQA_CFG_F_FAIL_OPEN));
-    }                              /* if (tests[3]) */
-
-    if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
-    {
-      perror("mnl_socket_send");
-      exit(EXIT_FAILURE);
-    }
-  }                                /* if (tests[4]) else */
+    perror("mnl_socket_send");
+    exit(EXIT_FAILURE);
+  }
 
 /* ENOBUFS is signalled to userspace when packets were lost
  * on kernel side.  In most cases, userspace isn't interested
