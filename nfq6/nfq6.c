@@ -72,6 +72,7 @@ static char txbuf[sizeof buf];
 static struct pkt_buff *pktb;
 static bool tests[NUM_TESTS] = { false };
 static uint32_t packet_mark;
+static int alternate_queue = 0;
 
 /* Static prototypes */
 
@@ -90,17 +91,27 @@ main(int argc, char *argv[])
   unsigned int portid, queue_num;
   int i;
 
-  while ((i = getopt(argc, argv, "TUht:")) != -1)
+  while ((i = getopt(argc, argv, "TUa:ht:")) != -1)
   {
     switch (i)
     {
+      case 'a':
+        alternate_queue = atoi(optarg);
+        if (alternate_queue <= 0 || alternate_queue > 0xffff)
+        {
+          fprintf(stderr, "Alternate queue number %d is out of range\n",
+            alternate_queue);
+          exit(EXIT_FAILURE);
+        }            /* if (alternate_queue <= 0 || alternate_queue > 0xffff) */
+        break;
+
       case 'h':
         usage();
         return 0;
 
       case 't':
         ret = atoi(optarg);
-        if (ret < 0 || ret > NUM_TESTS)
+        if (ret < 0 || ret >= NUM_TESTS)
         {
           fprintf(stderr, "Test %d is out of range\n", ret);
           exit(EXIT_FAILURE);
@@ -116,6 +127,12 @@ main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }
   queue_num = atoi(argv[optind]);
+
+  if (tests[4] && !alternate_queue)
+  {
+    fputs("Missing alternate queue number for test 4\n", stderr);
+    exit(EXIT_FAILURE);
+  }                                /* if (tests[4] && !alternate_queue) */
 
   setlinebuf(stdout);
 
@@ -245,6 +262,12 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
     }                              /* if (packet_mark == 0xfaceb00c) else */
     done = true;
   }                                /* if (tests[1] && !done) */
+
+  if (tests[4] && !done)
+  {
+    nfq_nlmsg_verdict_put(nlh, id, NF_QUEUE_NR(alternate_queue));
+    done = true;
+  }                                /* if (tests[4] && !done) */
 
   if (!done)
     nfq_nlmsg_verdict_put(nlh, id, NF_ACCEPT);
@@ -385,8 +408,9 @@ usage(void)
   puts("\nUsage: nfq6 [-TUh] [-t <test #>] queue_number\n" /*  */
     "  -T: use TCP (not implemented yet)\n" /*  */
     "  -U: use UDP (default\n"     /*  */
-    "  -h: give this help\n"       /*  */
-    "  -t <n>: Do test <n>. Tests are:\n" /*  */
+    "  -a: Alternate queue test 4 sends packets to\n" /*  */
+    "  -h: give this Help\n"       /*  */
+    "  -t <n>: do Test <n>. Tests are:\n" /*  */
     "    0: If packet mark is zero, set it to 0xbeef and give verdict " /*  */
     "NF_REPEAT\n"                  /*  */
     "    1: If packet mark is not 0xfaceb00c, set it to that and give " /*  */
@@ -394,8 +418,6 @@ usage(void)
     "       If packet mark *is* 0xfaceb00c, give verdict NF_STOP\n" /*  */
     "    2: Allow ENOBUFS to happen; treat as harmless when it does\n" /*  */
     "    3: Configure NFQA_CFG_F_FAIL_OPEN\n" /*  */
-    "    4: Try OR together attribute values, i.e.\n" /*  */
-    "       NFQA_CFG_F_GSO | (tests[3] ? NFQA_CFG_F_FAIL_OPEN : 0)\n" /*  */
-    "   !4: Put 1 or 2 attribute msgs, do 1 send\n" /*  */
+    "    4: Send packets to alternate -a queue\n" /*  */
     );
 }                                  /* static void usage(void) */
