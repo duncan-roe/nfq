@@ -27,7 +27,7 @@
 
 /* Macros */
 
-#define NUM_TESTS 5
+#define NUM_TESTS 6
 
 /* If bool is a macro, get rid of it */
 
@@ -127,6 +127,9 @@ main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }
   queue_num = atoi(argv[optind]);
+
+  if (tests[5])
+    tests[4] = true;
 
   if (tests[4] && !alternate_queue)
   {
@@ -265,7 +268,9 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
 
   if (tests[4] && !done)
   {
-    nfq_nlmsg_verdict_put(nlh, id, NF_QUEUE_NR(alternate_queue));
+    nfq_nlmsg_verdict_put(nlh, id,
+      NF_QUEUE_NR(alternate_queue) | (tests[5] ? NF_VERDICT_FLAG_QUEUE_BYPASS :
+      0));
     done = true;
   }                                /* if (tests[4] && !done) */
 
@@ -419,5 +424,6 @@ usage(void)
     "    2: Allow ENOBUFS to happen; treat as harmless when it does\n" /*  */
     "    3: Configure NFQA_CFG_F_FAIL_OPEN\n" /*  */
     "    4: Send packets to alternate -a queue\n" /*  */
+    "    5: Force on test 4 and specify BYPASS\n" /*  */
     );
 }                                  /* static void usage(void) */
