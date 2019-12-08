@@ -27,7 +27,7 @@
 
 /* Macros */
 
-#define NUM_TESTS 6
+#define NUM_TESTS 7
 
 /* If bool is a macro, get rid of it */
 
@@ -73,6 +73,7 @@ static struct pkt_buff *pktb;
 static bool tests[NUM_TESTS] = { false };
 static uint32_t packet_mark;
 static int alternate_queue = 0;
+static bool quit = false;
 
 /* Static prototypes */
 
@@ -283,6 +284,8 @@ send_verdict:
     perror("mnl_socket_send");
     exit(EXIT_FAILURE);
   }
+  if (quit)
+    exit(0);
 }
 
 /* ******************************** queue_cb ******************************** */
@@ -360,7 +363,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
     ntohs(ph->hw_protocol), ph->hook, plen);
 
 /*
- * ip/tcp checksums are not yet valid, e.g. due to GRO/GSO.
+ * ip/tcp checksums are not yet valid, e.g. due to GRO/GSO or IPv6.
  * The application should behave as if the checksums are correct.
  *
  * If these packets are later forwarded/sent out, the checksums will
@@ -396,6 +399,12 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
     GIVE_UP("Packet too short to get UDP payload\n");
   ulen = nfq_udp_get_payload_len(udph, pktb);
 
+  if (tests[6] && strchr(udp_payload, 'q'))
+  {
+    accept = false;                /* Drop this packet */
+    quit = true;                   /* Exit after giving verdict */
+  }                              /* if (tests[6] && strchr(udp_payload, 'q')) */
+
 send_verdict:
   nfq_send_verdict(ntohs(nfg->res_id), id, accept);
 
@@ -425,5 +434,6 @@ usage(void)
     "    3: Configure NFQA_CFG_F_FAIL_OPEN\n" /*  */
     "    4: Send packets to alternate -a queue\n" /*  */
     "    5: Force on test 4 and specify BYPASS\n" /*  */
+    "    6: Exit nfq6 if incoming packet contains 'q'\n" /*  */
     );
 }                                  /* static void usage(void) */
