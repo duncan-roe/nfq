@@ -27,7 +27,7 @@
 
 /* Macros */
 
-#define NUM_TESTS 7
+#define NUM_TESTS 9
 
 /* If bool is a macro, get rid of it */
 
@@ -68,7 +68,7 @@ struct dnshdr
 static struct mnl_socket *nl;
 /* Largest possible packet payload, plus netlink data overhead: */
 static char buf[0xffff + 4096];
-static char txbuf[sizeof buf];
+static char pktbuf[sizeof buf];
 static struct pkt_buff *pktb;
 static bool tests[NUM_TESTS] = { false };
 static uint32_t packet_mark;
@@ -217,7 +217,7 @@ main(int argc, char *argv[])
 static struct nlmsghdr *
 nfq_hdr_put(int type, uint32_t queue_num)
 {
-  struct nlmsghdr *nlh = mnl_nlmsg_put_header(txbuf);
+  struct nlmsghdr *nlh = mnl_nlmsg_put_header(buf);
   nlh->nlmsg_type = (NFNL_SUBSYS_QUEUE << 8) | type;
   nlh->nlmsg_flags = NLM_F_REQUEST;
 
@@ -383,12 +383,25 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   }                                /* if (!normal) */
 
 /* Copy data to a packet buffer. Allow 255 bytes extra room */
-  pktb = pktb_alloc(AF_INET6, payload, plen, 255);
-  if (!pktb)
+  if (tests[7])
   {
-    snprintf(erbuf, sizeof erbuf, "%s. (pktb_alloc)\n", strerror(errno));
-    GIVE_UP(erbuf);
-  }                                /* if (!pktb) */
+    pktb = pktb_usebuf(AF_INET6, payload, plen, 255, pktbuf + tests[8],
+      sizeof pktbuf);
+    if (!pktb)
+    {
+      snprintf(erbuf, sizeof erbuf, "%s. (pktb_usebuf)\n", strerror(errno));
+      GIVE_UP(erbuf);
+    }                              /* if (!pktb) */
+  }                                /* if (tests[7]) */
+  else
+  {
+    pktb = pktb_alloc(AF_INET6, payload, plen, 255);
+    if (!pktb)
+    {
+      snprintf(erbuf, sizeof erbuf, "%s. (pktb_alloc)\n", strerror(errno));
+      GIVE_UP(erbuf);
+    }                              /* if (!pktb) */
+  }                                /* if (tests[7]) else */
   if (!(iph = nfq_ip6_get_hdr(pktb)))
     GIVE_UP("Malformed IPv6\n");
   if (!nfq_ip6_set_transport_header(pktb, iph, IPPROTO_UDP))
@@ -408,7 +421,8 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
 send_verdict:
   nfq_send_verdict(ntohs(nfg->res_id), id, accept);
 
-  pktb_free(pktb);
+  if (!tests[7])
+    pktb_free(pktb);
 
   return MNL_CB_OK;
 }
@@ -435,5 +449,7 @@ usage(void)
     "    4: Send packets to alternate -a queue\n" /*  */
     "    5: Force on test 4 and specify BYPASS\n" /*  */
     "    6: Exit nfq6 if incoming packet contains 'q'\n" /*  */
+    "    7: Use pktb_usebuf()\n"     /*  */
+    "    8: Give pktb_usebuf() an odd address\n" /*  */
     );
 }                                  /* static void usage(void) */
