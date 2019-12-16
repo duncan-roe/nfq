@@ -1,5 +1,6 @@
-fd y /* ************************ C + ^N^W^K + fm -s ************************
+fd y /* ********************** C + git + ^N^W^K + fm -s **********************
 fi u ^ND^N^<4003>/cmacs^J
+fi u ^ND^N^<4003>/git.qm^J
 # n213 (^N^W^K) Insert static prototype at front
 n213 ^NC^N\^NM^<1577>^J^[^NFag1^Jl Static' 'prototypes^J^NC^N\^[m-^J^Z^T^ND^N^<1577>;^Jg ta^J^NU
 fm-s

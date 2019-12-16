@@ -28,7 +28,7 @@
 
 /* Macros */
 
-#define NUM_TESTS 15
+#define NUM_TESTS 17
 
 /* If bool is a macro, get rid of it */
 
@@ -201,7 +201,7 @@ main(int argc, char *argv[])
     }
 
     ret = mnl_cb_run(buf, ret, 0, portid, queue_cb, NULL);
-    if (ret < 0 && errno != EINTR && !tests[14])
+    if (ret < 0 && !(errno == EINTR || tests[14]))
     {
       perror("mnl_cb_run");
       if (errno != EINTR)
@@ -312,7 +312,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   struct tcphdr *tcph;
   struct ip6_hdr *iph;
   char erbuf[4096];
-  bool normal = true;              /* Don't print record structure */
+  bool normal = !tests[16];        /* Don't print record structure */
   char record_buf[160];
   int nc = 0;
   uint16_t plen;
@@ -375,12 +375,13 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   {
     nc += snprintf(record_buf + nc, sizeof record_buf - nc,
       ", checksum not ready");
-    if (ntohs(ph->hw_protocol) != ETH_P_IPV6)
+    if (ntohs(ph->hw_protocol) != ETH_P_IPV6 || tests[15])
       normal = false;
   }                                /* if (skbinfo & NFQA_SKB_CSUMNOTREADY) */
   if (!normal)
   {
     snprintf(record_buf + nc, sizeof record_buf - nc, ")\n");
+    get_time_now();                /* Put here while only 1 LOG call */
     LOG("%s", record_buf);
   }                                /* if (!normal) */
 
@@ -485,5 +486,7 @@ usage(void)
     "   12: Replace 2nd QWE by MNBVCXZ\n" /*  */
     "   13: Use TCP\n"             /*  */
     "   14: Report EINTR if we get it\n" /*  */
+    "   15: Log netlink packets with no checksum\n" /*  */
+    "   16: Log all netlink packets\n" /*  */
     );
 }                                  /* static void usage(void) */
