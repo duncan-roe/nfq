@@ -23,11 +23,12 @@
 #include <linux/netfilter/nfnetlink_queue.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
 #include <libnetfilter_queue/libnetfilter_queue_udp.h>
+#include <libnetfilter_queue/libnetfilter_queue_tcp.h>
 #include <libnetfilter_queue/libnetfilter_queue_ipv6.h>
 
 /* Macros */
 
-#define NUM_TESTS 13
+#define NUM_TESTS 15
 
 /* If bool is a macro, get rid of it */
 
@@ -200,10 +201,11 @@ main(int argc, char *argv[])
     }
 
     ret = mnl_cb_run(buf, ret, 0, portid, queue_cb, NULL);
-    if (ret < 0 && errno != EINTR)
+    if (ret < 0 && errno != EINTR && !tests[14])
     {
       perror("mnl_cb_run");
-      exit(EXIT_FAILURE);
+      if (errno != EINTR)
+        exit(EXIT_FAILURE);
     }
   }
 
@@ -304,9 +306,10 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   uint32_t id = 0, skbinfo;
   struct nfgenmsg *nfg;
   uint8_t *payload;
-  uint8_t *udp_payload;
+  uint8_t *xxp_payload;
   bool accept = true;
   struct udphdr *udph;
+  struct tcphdr *tcph;
   struct ip6_hdr *iph;
   char erbuf[4096];
   bool normal = true;              /* Don't print record structure */
@@ -403,30 +406,45 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   }                                /* if (tests[7]) else */
   if (!(iph = nfq_ip6_get_hdr(pktb)))
     GIVE_UP("Malformed IPv6\n");
-  if (!nfq_ip6_set_transport_header(pktb, iph, IPPROTO_UDP))
-    GIVE_UP("No UDP payload found\n");
-  if (!(udph = nfq_udp_get_hdr(pktb)))
-    GIVE_UP("Packet too short to get UDP header\n");
-  if (!(udp_payload = nfq_udp_get_payload(udph, pktb)))
-    GIVE_UP("Packet too short to get UDP payload\n");
+  if (tests[13])
+  {
+    if (!nfq_ip6_set_transport_header(pktb, iph, IPPROTO_TCP))
+      GIVE_UP("No TCP payload found\n");
+    if (!(tcph = nfq_tcp_get_hdr(pktb)))
+      GIVE_UP("Packet too short to get TCP header\n");
+    if (!(xxp_payload = nfq_tcp_get_payload(tcph, pktb)))
+      GIVE_UP("Packet too short to get TCP payload\n");
+  }                                /* if (tests[13]) */
+  else
+  {
+    if (!nfq_ip6_set_transport_header(pktb, iph, IPPROTO_UDP))
+      GIVE_UP("No UDP payload found\n");
+    if (!(udph = nfq_udp_get_hdr(pktb)))
+      GIVE_UP("Packet too short to get UDP header\n");
+    if (!(xxp_payload = nfq_udp_get_payload(udph, pktb)))
+      GIVE_UP("Packet too short to get UDP payload\n");
+  }                                /* if (tests[13]) else */
 
-  if (tests[6] && strchr(udp_payload, 'q'))
+  if (tests[6] && strchr(xxp_payload, 'q'))
   {
     accept = false;                /* Drop this packet */
     quit = true;                   /* Exit after giving verdict */
-  }                              /* if (tests[6] && strchr(udp_payload, 'q')) */
+  }                              /* if (tests[6] && strchr(xxp_payload, 'q')) */
 
-  if (tests[9] && (p = strstr(udp_payload, "ASD")))
-    nfq_udp_mangle_ipv6(pktb, p - udp_payload, 3, "F", 1);
+  if (!tests[13])
+  {
+    if (tests[9] && (p = strstr(xxp_payload, "ASD")))
+      nfq_udp_mangle_ipv6(pktb, p - xxp_payload, 3, "F", 1);
 
-  if (tests[10] && (p = strstr(udp_payload, "QWE")))
-    nfq_udp_mangle_ipv6(pktb, p - udp_payload, 3, "RTYUIOP", 7);
+    if (tests[10] && (p = strstr(xxp_payload, "QWE")))
+      nfq_udp_mangle_ipv6(pktb, p - xxp_payload, 3, "RTYUIOP", 7);
 
-  if (tests[11] && (p = strstr(udp_payload, "ASD")))
-    nfq_udp_mangle_ipv6(pktb, p - udp_payload, 3, "G", 1);
+    if (tests[11] && (p = strstr(xxp_payload, "ASD")))
+      nfq_udp_mangle_ipv6(pktb, p - xxp_payload, 3, "G", 1);
 
-  if (tests[12] && (p = strstr(udp_payload, "QWE")))
-    nfq_udp_mangle_ipv6(pktb, p - udp_payload, 3, "MNBVCXZ", 7);
+    if (tests[12] && (p = strstr(xxp_payload, "QWE")))
+      nfq_udp_mangle_ipv6(pktb, p - xxp_payload, 3, "MNBVCXZ", 7);
+  }                                /* TODO: else *//* if (!tests[13]) */
 
 send_verdict:
   nfq_send_verdict(ntohs(nfg->res_id), id, accept);
@@ -459,11 +477,13 @@ usage(void)
     "    4: Send packets to alternate -a queue\n" /*  */
     "    5: Force on test 4 and specify BYPASS\n" /*  */
     "    6: Exit nfq6 if incoming packet contains 'q'\n" /*  */
-    "    7: Use pktb_usebuf()\n"     /*  */
+    "    7: Use pktb_usebuf()\n"   /*  */
     "    8: Give pktb_usebuf() an odd address\n" /*  */
     "    9: Replace 1st ASD by F\n" /*  */
     "   10: Replace 1st QWE by RTYUIOP\n" /*  */
     "   11: Replace 2nd ASD by G\n" /*  */
     "   12: Replace 2nd QWE by MNBVCXZ\n" /*  */
+    "   13: Use TCP\n"             /*  */
+    "   14: Report EINTR if we get it\n" /*  */
     );
 }                                  /* static void usage(void) */
