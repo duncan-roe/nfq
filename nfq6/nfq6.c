@@ -27,7 +27,7 @@
 
 /* Macros */
 
-#define NUM_TESTS 9
+#define NUM_TESTS 10
 
 /* If bool is a macro, get rid of it */
 
@@ -303,7 +303,6 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   struct nlattr *attr[NFQA_MAX + 1] = { };
   uint32_t id = 0, skbinfo;
   struct nfgenmsg *nfg;
-  uint16_t ulen;
   uint8_t *payload;
   uint8_t *udp_payload;
   bool accept = true;
@@ -313,8 +312,8 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   bool normal = true;              /* Don't print record structure */
   char record_buf[160];
   int nc = 0;
-  unsigned int match_offset, match_len, rep_len;
   uint16_t plen;
+  uint8_t *p;
 
   if (nfq_nlmsg_parse(nlh, attr) < 0)
   {
@@ -410,13 +409,15 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
     GIVE_UP("Packet too short to get UDP header\n");
   if (!(udp_payload = nfq_udp_get_payload(udph, pktb)))
     GIVE_UP("Packet too short to get UDP payload\n");
-  ulen = nfq_udp_get_payload_len(udph, pktb);
 
   if (tests[6] && strchr(udp_payload, 'q'))
   {
     accept = false;                /* Drop this packet */
     quit = true;                   /* Exit after giving verdict */
   }                              /* if (tests[6] && strchr(udp_payload, 'q')) */
+
+  if (tests[9] && (p = strstr(udp_payload, "ASD")))
+    nfq_udp_mangle_ipv6(pktb, p - udp_payload, 3, "F", 1);
 
 send_verdict:
   nfq_send_verdict(ntohs(nfg->res_id), id, accept);
@@ -451,5 +452,6 @@ usage(void)
     "    6: Exit nfq6 if incoming packet contains 'q'\n" /*  */
     "    7: Use pktb_usebuf()\n"     /*  */
     "    8: Give pktb_usebuf() an odd address\n" /*  */
+    "    9: Replace 1st ASD by F\n" /*  */
     );
 }                                  /* static void usage(void) */
