@@ -27,7 +27,7 @@
 
 /* Macros */
 
-#define NUM_TESTS 10
+#define NUM_TESTS 13
 
 /* If bool is a macro, get rid of it */
 
@@ -419,6 +419,15 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   if (tests[9] && (p = strstr(udp_payload, "ASD")))
     nfq_udp_mangle_ipv6(pktb, p - udp_payload, 3, "F", 1);
 
+  if (tests[10] && (p = strstr(udp_payload, "QWE")))
+    nfq_udp_mangle_ipv6(pktb, p - udp_payload, 3, "RTYUIOP", 7);
+
+  if (tests[11] && (p = strstr(udp_payload, "ASD")))
+    nfq_udp_mangle_ipv6(pktb, p - udp_payload, 3, "G", 1);
+
+  if (tests[12] && (p = strstr(udp_payload, "QWE")))
+    nfq_udp_mangle_ipv6(pktb, p - udp_payload, 3, "MNBVCXZ", 7);
+
 send_verdict:
   nfq_send_verdict(ntohs(nfg->res_id), id, accept);
 
@@ -453,5 +462,8 @@ usage(void)
     "    7: Use pktb_usebuf()\n"     /*  */
     "    8: Give pktb_usebuf() an odd address\n" /*  */
     "    9: Replace 1st ASD by F\n" /*  */
+    "   10: Replace 1st QWE by RTYUIOP\n" /*  */
+    "   11: Replace 2nd ASD by G\n" /*  */
+    "   12: Replace 2nd QWE by MNBVCXZ\n" /*  */
     );
 }                                  /* static void usage(void) */
