@@ -28,7 +28,7 @@
 
 /* Macros */
 
-#define NUM_TESTS 17
+#define NUM_TESTS 19
 
 /* If bool is a macro, get rid of it */
 
@@ -317,6 +317,8 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   int nc = 0;
   uint16_t plen;
   uint8_t *p;
+  int (*mangler) (struct pkt_buff *, unsigned int, unsigned int, const char *,
+    unsigned int);
 
   if (nfq_nlmsg_parse(nlh, attr) < 0)
   {
@@ -409,6 +411,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
     GIVE_UP("Malformed IPv6\n");
   if (tests[13])
   {
+    mangler = nfq_tcp_mangle_ipv6;
     if (!nfq_ip6_set_transport_header(pktb, iph, IPPROTO_TCP))
       GIVE_UP("No TCP payload found\n");
     if (!(tcph = nfq_tcp_get_hdr(pktb)))
@@ -418,6 +421,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   }                                /* if (tests[13]) */
   else
   {
+    mangler = nfq_udp_mangle_ipv6;
     if (!nfq_ip6_set_transport_header(pktb, iph, IPPROTO_UDP))
       GIVE_UP("No UDP payload found\n");
     if (!(udph = nfq_udp_get_hdr(pktb)))
@@ -432,20 +436,23 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
     quit = true;                   /* Exit after giving verdict */
   }                              /* if (tests[6] && strchr(xxp_payload, 'q')) */
 
-  if (!tests[13])
-  {
-    if (tests[9] && (p = strstr(xxp_payload, "ASD")))
-      nfq_udp_mangle_ipv6(pktb, p - xxp_payload, 3, "F", 1);
+  if (tests[9] && (p = strstr(xxp_payload, "ASD")))
+    mangler(pktb, p - xxp_payload, 3, "F", 1);
 
-    if (tests[10] && (p = strstr(xxp_payload, "QWE")))
-      nfq_udp_mangle_ipv6(pktb, p - xxp_payload, 3, "RTYUIOP", 7);
+  if (tests[10] && (p = strstr(xxp_payload, "QWE")))
+    mangler(pktb, p - xxp_payload, 3, "RTYUIOP", 7);
 
-    if (tests[11] && (p = strstr(xxp_payload, "ASD")))
-      nfq_udp_mangle_ipv6(pktb, p - xxp_payload, 3, "G", 1);
+  if (tests[11] && (p = strstr(xxp_payload, "ASD")))
+    mangler(pktb, p - xxp_payload, 3, "G", 1);
 
-    if (tests[12] && (p = strstr(xxp_payload, "QWE")))
-      nfq_udp_mangle_ipv6(pktb, p - xxp_payload, 3, "MNBVCXZ", 7);
-  }                                /* TODO: else *//* if (!tests[13]) */
+  if (tests[12] && (p = strstr(xxp_payload, "QWE")))
+    mangler(pktb, p - xxp_payload, 3, "MNBVCXZ", 7);
+
+  if (tests[17] && (p = strstr(xxp_payload, "ZXC")))
+    mangler(pktb, p - xxp_payload, 3, "VBN", 3);
+
+  if (tests[18] && (p = strstr(xxp_payload, "ZXC")))
+    mangler(pktb, p - xxp_payload, 3, "VBN", 3);
 
 send_verdict:
   nfq_send_verdict(ntohs(nfg->res_id), id, accept);
@@ -488,5 +495,7 @@ usage(void)
     "   14: Report EINTR if we get it\n" /*  */
     "   15: Log netlink packets with no checksum\n" /*  */
     "   16: Log all netlink packets\n" /*  */
+    "   17: Replace 1st ZXC by VBN\n" /*  */
+    "   18: Replace 2nd ZXC by VBN\n" /*  */
     );
 }                                  /* static void usage(void) */
