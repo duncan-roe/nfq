@@ -10,18 +10,18 @@ them from the
 [mailing list archive](http://www.spinics.net/lists/netfilter-devel/)
 (in the browser, search for _libnetfilter\_queue_).
 <br />
-At time of writing (2019-12-08 13:20:32 +1100), there are no outstanding
-patches.
+At time of writing (2019-12-20 17:13:42 +1100), you need
+[this](https://www.spinics.net/lists/netfilter-devel/msg64470.html),
+and 2 others that haven't made it into the archive yet.
 
 ## nfq6 Invocation
 The command `nfq6 -h` is always up to date. At time of writing, it gives
 
-    Usage: nfq6 [-TUh] [-t <test #>] queue_number
-      -T: use TCP (not implemented yet)
-      -U: use UDP (default
-      -a: Alternate queue test 4 sends packets to
-      -h: give this help
-      -t <n>: Do test <n>. Tests are:
+    Usage: nfq6 [-a <alt q #>] [-t <test #>],... queue_number
+           nfq6 -h
+      -a: Alternate queue for test 4
+      -h: give this Help and exit
+      -t <n>: do Test <n>. Tests are:
         0: If packet mark is zero, set it to 0xbeef and give verdict NF_REPEAT
         1: If packet mark is not 0xfaceb00c, set it to that and give verdict NF_REPEAT
            If packet mark *is* 0xfaceb00c, give verdict NF_STOP
@@ -30,6 +30,18 @@ The command `nfq6 -h` is always up to date. At time of writing, it gives
         4: Send packets to alternate -a queue
         5: Force on test 4 and specify BYPASS
         6: Exit nfq6 if incoming packet contains 'q'
+        7: Use pktb_usebuf()
+        8: Give pktb_usebuf() an odd address
+        9: Replace 1st ASD by F
+       10: Replace 1st QWE by RTYUIOP
+       11: Replace 2nd ASD by G
+       12: Replace 2nd QWE by MNBVCXZ
+       13: Use TCP
+       14: Report EINTR if we get it
+       15: Log netlink packets with no checksum
+       16: Log all netlink packets
+       17: Replace 1st ZXC by VBN
+       18: Replace 2nd ZXC by VBN
 
 ## Useful command lines
 Run each of these in a separate window
@@ -39,28 +51,38 @@ Run each of these in a separate window
 `nc -6 -u -l -k -p 1042`
 <br />
 `tcpdump -X -i lo ip6`
+<br />
+To test with a listening netcat on another system on the local LAN, look up its
+IPv6 address via *ifconfig* then connect similarly to this:
+<br />
+`nc -6 -t fe80::1a60:24ff:febb:2d6%eth0 1042`
+<br />
+(you need to use another system to test checksums)
 
 ## nft ruleset
-nfq6 including all tests needs these rules
+These rules are adequate for almost all nfq6 tests
 
     #!/usr/sbin/nft -f
     flush ruleset
     table ip6 IP6 \
     {
-      # A chain to test IPv6 mangling and different verdicts
-
-      chain FILTER_INPUT \
-      {
-        type filter hook input priority filter; policy accept;
-        iif "lo" meta l4proto udp udp dport 1042 counter queue num 24 bypass
-      }
-
-      # A chain to test verdict NF_STOP
-
-      chain FILTER_INPUT_1 \
-      {
-        type filter hook input priority filter + 1; policy accept;
-        iif "lo" meta l4proto udp udp dport 1042 counter
-      }
+      # Test IPv6 mangling via local interface
+      chain FILTER_INPUT{type filter hook input priority filter; policy accept;
+        iif "lo" udp dport 1042 counter queue num 24 bypass
+        iif "lo" tcp dport 1042 counter queue num 24 bypass;}
+      # Test IPv6 mangling via eth0
+       chain FILTER_OUTPUT_2{type filter hook output priority filter;policy accept
+        oif "eth0" udp dport 1042 counter queue num 24 bypass
+        oif "eth0" tcp dport 1042 counter queue num 24 bypass;}
     }
-    list ruleset
+To verify that NF\_STOP bypasses subsequent rules using the input hook,
+you also need these (udp only)
+
+    chain FILTER_INPUT_1{type filter hook input priority filter+1; policy accept;
+      iif "lo" udp dport 1042 counter;}
+    chain FILTER_OUTPUT{type filter hook output priority filter; policy accept;
+      udp dport 1042 counter queue num 24 bypass;}
+    chain FILTER_OUTPUT_1{type filter hook output priority filter+1;policy accept
+      udp dport 1042 counter;}
+    chain FLTR_PST{type filter hook postrouting priority filter+2;policy accept;
+      udp dport 1042 counter;}

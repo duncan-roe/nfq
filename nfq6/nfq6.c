@@ -93,7 +93,7 @@ main(int argc, char *argv[])
   unsigned int portid, queue_num;
   int i;
 
-  while ((i = getopt(argc, argv, "TUa:ht:")) != -1)
+  while ((i = getopt(argc, argv, "a:ht:")) != -1)
   {
     switch (i)
     {
@@ -469,11 +469,10 @@ static void
 usage(void)
 {
 /* N.B. Trailing empty comments are there to stop gnu indent joining lines */
-  puts("\nUsage: nfq6 [-TUh] [-t <test #>] queue_number\n" /*  */
-    "  -T: use TCP (not implemented yet)\n" /*  */
-    "  -U: use UDP (default\n"     /*  */
-    "  -a: Alternate queue test 4 sends packets to\n" /*  */
-    "  -h: give this Help\n"       /*  */
+  puts("\nUsage: nfq6 [-a <alt q #>] [-t <test #>],... queue_number\n" /*  */
+    "       nfq6 -h\n"             /*  */
+    "  -a: Alternate queue for test 4\n" /*  */
+    "  -h: give this Help and exit\n"       /*  */
     "  -t <n>: do Test <n>. Tests are:\n" /*  */
     "    0: If packet mark is zero, set it to 0xbeef and give verdict " /*  */
     "NF_REPEAT\n"                  /*  */
