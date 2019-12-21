@@ -10,9 +10,10 @@ them from the
 [mailing list archive](http://www.spinics.net/lists/netfilter-devel/)
 (in the browser, search for _libnetfilter\_queue_).
 <br />
-At time of writing (2019-12-20 17:13:42 +1100), you need
+At time of writing (2019-12-21 12:12:06 +1100), you need
 [this](https://www.spinics.net/lists/netfilter-devel/msg64470.html),
-and 2 others that haven't made it into the archive yet.
+[this](https://www.spinics.net/lists/netfilter-devel/msg64669.html) and
+[this](https://www.spinics.net/lists/netfilter-devel/msg64667.html).
 
 ## nfq6 Invocation
 The command `nfq6 -h` is always up to date. At time of writing, it gives
