@@ -390,11 +390,11 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
 /* Copy data to a packet buffer. Allow 255 bytes extra room */
   if (tests[7])
   {
-    pktb = pktb_usebuf(AF_INET6, payload, plen, 255, pktbuf + tests[8],
+    pktb = pktb_make(AF_INET6, payload, plen, 255, pktbuf + tests[8],
       sizeof pktbuf);
     if (!pktb)
     {
-      snprintf(erbuf, sizeof erbuf, "%s. (pktb_usebuf)\n", strerror(errno));
+      snprintf(erbuf, sizeof erbuf, "%s. (pktb_make)\n", strerror(errno));
       GIVE_UP(erbuf);
     }                              /* if (!pktb) */
   }                                /* if (tests[7]) */
@@ -484,8 +484,8 @@ usage(void)
     "    4: Send packets to alternate -a queue\n" /*  */
     "    5: Force on test 4 and specify BYPASS\n" /*  */
     "    6: Exit nfq6 if incoming packet contains 'q'\n" /*  */
-    "    7: Use pktb_usebuf()\n"   /*  */
-    "    8: Give pktb_usebuf() an odd address\n" /*  */
+    "    7: Use pktb_make()\n"   /*  */
+    "    8: Give pktb_make() an odd address\n" /*  */
     "    9: Replace 1st ASD by F\n" /*  */
     "   10: Replace 1st QWE by RTYUIOP\n" /*  */
     "   11: Replace 2nd ASD by G\n" /*  */

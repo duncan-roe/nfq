@@ -10,10 +10,8 @@ them from the
 [mailing list archive](http://www.spinics.net/lists/netfilter-devel/)
 (in the browser, search for _libnetfilter\_queue_).
 <br />
-At time of writing (2019-12-21 12:12:06 +1100), you need
-[this](https://www.spinics.net/lists/netfilter-devel/msg64470.html),
-[this](https://www.spinics.net/lists/netfilter-devel/msg64669.html) and
-[this](https://www.spinics.net/lists/netfilter-devel/msg64667.html).
+At time of writing (2020-01-10 10:27:58 +1100), you need
+[this](https://www.spinics.net/lists/netfilter-devel/msg64851.html).
 
 ## nfq6 Invocation
 The command `nfq6 -h` is always up to date. At time of writing, it gives
@@ -31,8 +29,8 @@ The command `nfq6 -h` is always up to date. At time of writing, it gives
         4: Send packets to alternate -a queue
         5: Force on test 4 and specify BYPASS
         6: Exit nfq6 if incoming packet contains 'q'
-        7: Use pktb_usebuf()
-        8: Give pktb_usebuf() an odd address
+        7: Use pktb_make()
+        8: Give pktb_make() an odd address
         9: Replace 1st ASD by F
        10: Replace 1st QWE by RTYUIOP
        11: Replace 2nd ASD by G
