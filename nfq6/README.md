@@ -18,8 +18,10 @@ The command `nfq6 -h` is always up to date. At time of writing, it gives
 
     Usage: nfq6 [-a <alt q #>] [-t <test #>],... queue_number
            nfq6 -h
-      -a: Alternate queue for test 4
+      -a <n>: Alternate queue for test 4
       -h: give this Help and exit
+      -p <n>: Time <n> passes of pktb_make() or whatever on the first packet.
+              Forces on t6. It's expected the 2nd packet will be "q"
       -t <n>: do Test <n>. Tests are:
         0: If packet mark is zero, set it to 0xbeef and give verdict NF_REPEAT
         1: If packet mark is not 0xfaceb00c, set it to that and give verdict NF_REPEAT

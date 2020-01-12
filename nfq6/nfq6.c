@@ -13,8 +13,10 @@
 #include <unistd.h>
 #include <string.h>
 #include <linux/ip.h>
+#include <sys/time.h>
 #include <arpa/inet.h>
 #include <linux/types.h>
+#include <sys/resource.h>
 #include <libmnl/libmnl.h>
 #include <linux/if_ether.h>
 #include <linux/netfilter.h>
@@ -75,6 +77,7 @@ static bool tests[NUM_TESTS] = { false };
 static uint32_t packet_mark;
 static int alternate_queue = 0;
 static bool quit = false;
+static int passes = 0;
 
 /* Static prototypes */
 
@@ -93,7 +96,7 @@ main(int argc, char *argv[])
   unsigned int portid, queue_num;
   int i;
 
-  while ((i = getopt(argc, argv, "a:ht:")) != -1)
+  while ((i = getopt(argc, argv, "a:hp:t:")) != -1)
   {
     switch (i)
     {
@@ -110,6 +113,14 @@ main(int argc, char *argv[])
       case 'h':
         usage();
         return 0;
+
+      case 'p':
+        passes = atoi(optarg);
+        if (passes < 0)
+          passes = 0;              /* Finger trouble */
+        if (passes)
+          tests[6] = true;
+        break;
 
       case 't':
         ret = atoi(optarg);
@@ -407,8 +418,54 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
       GIVE_UP(erbuf);
     }                              /* if (!pktb) */
   }                                /* if (tests[7]) else */
+
+/* Get timings for pktb_make vs. pktb _alloc if requested */
+  if (passes)
+  {
+    struct rusage usage[2];
+    int i;
+
+    i = getrusage(RUSAGE_SELF, usage);
+    if (i)
+      perror("getrusage");
+    for (i = passes; i; i--)
+    {
+      if (tests[7])
+      {
+        pktb = pktb_make(AF_INET6, payload, plen, 255, pktbuf + tests[8],
+          sizeof pktbuf);
+        if (!pktb)
+        {
+          perror("pktb_make");     /* Not expected ever */
+          break;
+        }                          /* if (!pktb) */
+      }                            /* if (tests[7]) */
+      else
+      {
+        pktb_free(pktb);
+        pktb = pktb_alloc(AF_INET6, payload, plen, 255);
+        if (!pktb)
+        {
+          perror("pktb_alloc");
+          break;
+        }                          /* if (!pktb) */
+      }                            /* if (tests[7]) else */
+    }                              /* for (i = passes; i; i--) */
+    i = getrusage(RUSAGE_SELF, usage + 1);
+    if (i)
+      perror("getrusage");
+    else
+      printf("passes: %d\n   sys: %lg\n  user: %lg\n", passes,
+        usage[1].ru_stime.tv_sec + usage[1].ru_stime.tv_usec / 1000000.0 -
+        usage[0].ru_stime.tv_sec - usage[0].ru_stime.tv_usec / 1000000.0,
+        usage[1].ru_utime.tv_sec + usage[1].ru_utime.tv_usec / 1000000.0 -
+        usage[0].ru_utime.tv_sec - usage[0].ru_utime.tv_usec / 1000000.0);
+    passes = 0;
+  }                                /* if (passes) */
+
   if (!(iph = nfq_ip6_get_hdr(pktb)))
     GIVE_UP("Malformed IPv6\n");
+
   if (tests[13])
   {
     mangler = nfq_tcp_mangle_ipv6;
@@ -471,8 +528,12 @@ usage(void)
 /* N.B. Trailing empty comments are there to stop gnu indent joining lines */
   puts("\nUsage: nfq6 [-a <alt q #>] [-t <test #>],... queue_number\n" /*  */
     "       nfq6 -h\n"             /*  */
-    "  -a: Alternate queue for test 4\n" /*  */
-    "  -h: give this Help and exit\n"       /*  */
+    "  -a <n>: Alternate queue for test 4\n" /*  */
+    "  -h: give this Help and exit\n" /*  */
+    "  -p <n>: Time  <n> passes of pktb_make() or whatever on the first" /*  */
+    " packet.\n"                   /*  */
+    "          Forces on t6. It's expected the 2nd packet will be" /*  */
+    " \"q\"\n"                     /*  */
     "  -t <n>: do Test <n>. Tests are:\n" /*  */
     "    0: If packet mark is zero, set it to 0xbeef and give verdict " /*  */
     "NF_REPEAT\n"                  /*  */
@@ -484,7 +545,7 @@ usage(void)
     "    4: Send packets to alternate -a queue\n" /*  */
     "    5: Force on test 4 and specify BYPASS\n" /*  */
     "    6: Exit nfq6 if incoming packet contains 'q'\n" /*  */
-    "    7: Use pktb_make()\n"   /*  */
+    "    7: Use pktb_make()\n"     /*  */
     "    8: Give pktb_make() an odd address\n" /*  */
     "    9: Replace 1st ASD by F\n" /*  */
     "   10: Replace 1st QWE by RTYUIOP\n" /*  */
