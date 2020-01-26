@@ -4,7 +4,7 @@
 
 #pragma GCC diagnostic ignored "-Wpointer-sign"
 
-/* Headers */
+/* System headers */
 
 #include <time.h>
 #include <errno.h>
@@ -30,7 +30,7 @@
 
 /* Macros */
 
-#define NUM_TESTS 19
+#define NUM_TESTS 20
 
 /* If bool is a macro, get rid of it */
 
@@ -45,26 +45,6 @@
 #include "prototypes.h"
 #include "typedefs.h"
 #include "logger.h"
-
-/* Typedefs */
-
-struct dnshdr
-{
-  uint16_t ID;
-#if defined(__LITTLE_ENDIAN_BITFIELD)
-  uint8_t RD:1, TC:1, AA:1, Opcode:4, QR:1;
-  uint8_t RCODE:4, CD:1, AD:1, Z:1, RA:1;
-#elif defined (__BIG_ENDIAN_BITFIELD)
-  uint8_t QR:1, Opcode:4, AA:1, TC:1, RD:1;
-  uint8_t RA:1, Z:1, AD:1, CD:1, RCODE:4;
-#else
-#error  "Please fix <asm/byteorder.h>"
-#endif
-  uint16_t QDCOUNT;
-  uint16_t ANCOUNT;
-  uint16_t NSCOUNT;
-  uint16_t ARCOUNT;
-};                                 /* struct dnshdr */
 
 /* Static Variables */
 
@@ -401,8 +381,12 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
 /* Copy data to a packet buffer. Allow 255 bytes extra room */
   if (tests[7])
   {
-    pktb = pktb_make(AF_INET6, payload, plen, 255, pktbuf + tests[8],
-      sizeof pktbuf);
+    if (tests[19])
+      pktb = pktb_make_data(AF_INET6, payload, plen, pktbuf + tests[8],
+        sizeof pktbuf);
+    else
+      pktb = pktb_make(AF_INET6, payload, plen, 255, pktbuf + tests[8],
+        sizeof pktbuf);
     if (!pktb)
     {
       snprintf(erbuf, sizeof erbuf, "%s. (pktb_make)\n", strerror(errno));
@@ -411,7 +395,10 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   }                                /* if (tests[7]) */
   else
   {
-    pktb = pktb_alloc(AF_INET6, payload, plen, 255);
+    if (tests[19])
+      pktb = pktb_alloc_data(AF_INET6, payload, plen);
+    else
+      pktb = pktb_alloc(AF_INET6, payload, plen, 255);
     if (!pktb)
     {
       snprintf(erbuf, sizeof erbuf, "%s. (pktb_alloc)\n", strerror(errno));
@@ -428,29 +415,64 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
     i = getrusage(RUSAGE_SELF, usage);
     if (i)
       perror("getrusage");
-    for (i = passes; i; i--)
-    {
-      if (tests[7])
+    if (tests[7])
+      if (tests[19])
       {
-        pktb = pktb_make(AF_INET6, payload, plen, 255, pktbuf + tests[8],
-          sizeof pktbuf);
-        if (!pktb)
+        for (i = passes; i; i--)
         {
-          perror("pktb_make");     /* Not expected ever */
-          break;
-        }                          /* if (!pktb) */
-      }                            /* if (tests[7]) */
+          pktb = pktb_make_data(AF_INET6, payload, plen, pktbuf + tests[8],
+            sizeof pktbuf);
+          if (!pktb)
+          {
+            perror("pktb_make");   /* Not expected ever */
+            break;
+          }                        /* if (!pktb) */
+        }                          /* for (i = passes; i; i--) */
+      }                            /* if (tests[19]) */
       else
       {
-        pktb_free(pktb);
-        pktb = pktb_alloc(AF_INET6, payload, plen, 255);
-        if (!pktb)
+        for (i = passes; i; i--)
         {
-          perror("pktb_alloc");
-          break;
-        }                          /* if (!pktb) */
-      }                            /* if (tests[7]) else */
-    }                              /* for (i = passes; i; i--) */
+          {
+            pktb = pktb_make(AF_INET6, payload, plen, 255, pktbuf + tests[8],
+              sizeof pktbuf);
+            if (!pktb)
+            {
+              perror("pktb_make"); /* Not expected ever */
+              break;
+            }                      /* if (!pktb) */
+          }                        /* for (i = passes; i; i--) */
+        }                          /* if (tests[19]) else */
+      }                            /* if (tests[7]) */
+    else
+    {
+      if (tests[19])
+      {
+        for (i = passes; i; i--)
+        {
+          pktb_free(pktb);
+          pktb = pktb_alloc_data(AF_INET6, payload, plen);
+          if (!pktb)
+          {
+            perror("pktb_alloc");
+            break;
+          }                        /* if (!pktb) */
+        }                          /* for (i = passes; i; i--) */
+      }                            /* if (tests[19]) */
+      else
+      {
+        for (i = passes; i; i--)
+        {
+          pktb_free(pktb);
+          pktb = pktb_alloc(AF_INET6, payload, plen, 255);
+          if (!pktb)
+          {
+            perror("pktb_alloc");
+            break;
+          }                        /* if (!pktb) */
+        }                          /* for (i = passes; i; i--) */
+      }                            /* if (tests[19]) else */
+    }                              /* if (tests[7]) else */
     i = getrusage(RUSAGE_SELF, usage + 1);
     if (i)
       perror("getrusage");
@@ -526,11 +548,12 @@ static void
 usage(void)
 {
 /* N.B. Trailing empty comments are there to stop gnu indent joining lines */
-  puts("\nUsage: nfq6 [-a <alt q #>] [-t <test #>],... queue_number\n" /*  */
+  puts("\nUsage: nfq6 [-a <alt q #>] [-p passes] " /*  */
+    "[-t <test #>],... queue_number\n" /*  */
     "       nfq6 -h\n"             /*  */
     "  -a <n>: Alternate queue for test 4\n" /*  */
     "  -h: give this Help and exit\n" /*  */
-    "  -p <n>: Time  <n> passes of pktb_make() or whatever on the first" /*  */
+    "  -p <n>: Time <n> passes of pktb_make() or whatever on the first" /*  */
     " packet.\n"                   /*  */
     "          Forces on t6. It's expected the 2nd packet will be" /*  */
     " \"q\"\n"                     /*  */
@@ -557,5 +580,6 @@ usage(void)
     "   16: Log all netlink packets\n" /*  */
     "   17: Replace 1st ZXC by VBN\n" /*  */
     "   18: Replace 2nd ZXC by VBN\n" /*  */
+    "   19: Use _data variants of pktb_alloc & pktb_make\n" /*  */
     );
 }                                  /* static void usage(void) */

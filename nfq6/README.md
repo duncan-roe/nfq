@@ -10,17 +10,18 @@ them from the
 [mailing list archive](http://www.spinics.net/lists/netfilter-devel/)
 (in the browser, search for _libnetfilter\_queue_).
 <br />
-At time of writing (2020-01-10 10:27:58 +1100), you need
+At time of writing (2020-01-27 10:39:26 +1100), you need
 [this](https://www.spinics.net/lists/netfilter-devel/msg64851.html).
+Patches for the _data variants are not yet submitted.
 
 ## nfq6 Invocation
 The command `nfq6 -h` is always up to date. At time of writing, it gives
 
-    Usage: nfq6 [-a <alt q #>] [-t <test #>],... queue_number
+    Usage: nfq6 [-a <alt q #>] [-p passes] [-t <test #>],... queue_number
            nfq6 -h
       -a <n>: Alternate queue for test 4
       -h: give this Help and exit
-      -p <n>: Time <n> passes of pktb_make() or whatever on the first packet.
+      -p <n>: Time  <n> passes of pktb_make() or whatever on the first packet.
               Forces on t6. It's expected the 2nd packet will be "q"
       -t <n>: do Test <n>. Tests are:
         0: If packet mark is zero, set it to 0xbeef and give verdict NF_REPEAT
@@ -43,6 +44,7 @@ The command `nfq6 -h` is always up to date. At time of writing, it gives
        16: Log all netlink packets
        17: Replace 1st ZXC by VBN
        18: Replace 2nd ZXC by VBN
+       19: Use _data variants of pktb_alloc & pktb_make
 
 ## Useful command lines
 Run each of these in a separate window
