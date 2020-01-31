@@ -50,8 +50,8 @@
 
 static struct mnl_socket *nl;
 /* Largest possible packet payload, plus netlink data overhead: */
-static char buf[0xffff + 4096];
-static char pktbuf[sizeof buf];
+static char nlbuf[0xffff + 4096];
+static char pktbuf[sizeof nlbuf];
 static struct pkt_buff *pktb;
 static bool tests[NUM_TESTS] = { false };
 static uint32_t packet_mark;
@@ -64,7 +64,7 @@ static int passes = 0;
 static void usage(void);
 static int queue_cb(const struct nlmsghdr *nlh, void *data);
 static void nfq_send_verdict(int queue_num, uint32_t id, bool accept);
-static struct nlmsghdr *nfq_hdr_put(int type, uint32_t queue_num);
+static struct nlmsghdr *nfq_hdr_put(char *buf, int type, uint32_t queue_num);
 
 /* ********************************** main ********************************** */
 
@@ -150,7 +150,7 @@ main(int argc, char *argv[])
   }
   portid = mnl_socket_get_portid(nl);
 
-  nlh = nfq_hdr_put(NFQNL_MSG_CONFIG, queue_num);
+  nlh = nfq_hdr_put(nlbuf, NFQNL_MSG_CONFIG, queue_num);
   nfq_nlmsg_cfg_put_cmd(nlh, AF_INET6, NFQNL_CFG_CMD_BIND);
 
   if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
@@ -159,7 +159,7 @@ main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }
 
-  nlh = nfq_hdr_put(NFQNL_MSG_CONFIG, queue_num);
+  nlh = nfq_hdr_put(nlbuf, NFQNL_MSG_CONFIG, queue_num);
   nfq_nlmsg_cfg_put_params(nlh, NFQNL_COPY_PACKET, 0xffff);
 
   mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS,
@@ -182,7 +182,7 @@ main(int argc, char *argv[])
 
   for (;;)
   {
-    ret = mnl_socket_recvfrom(nl, buf, sizeof buf);
+    ret = mnl_socket_recvfrom(nl, nlbuf, sizeof nlbuf);
     if (ret == -1)
     {
       perror("mnl_socket_recvfrom");
@@ -191,7 +191,7 @@ main(int argc, char *argv[])
       exit(EXIT_FAILURE);
     }
 
-    ret = mnl_cb_run(buf, ret, 0, portid, queue_cb, NULL);
+    ret = mnl_cb_run(nlbuf, ret, 0, portid, queue_cb, NULL);
     if (ret < 0 && !(errno == EINTR || tests[14]))
     {
       perror("mnl_cb_run");
@@ -208,7 +208,7 @@ main(int argc, char *argv[])
 /* ******************************* nfq_hdr_put ****************************** */
 
 static struct nlmsghdr *
-nfq_hdr_put(int type, uint32_t queue_num)
+nfq_hdr_put(char *buf, int type, uint32_t queue_num)
 {
   struct nlmsghdr *nlh = mnl_nlmsg_put_header(buf);
   nlh->nlmsg_type = (NFNL_SUBSYS_QUEUE << 8) | type;
@@ -230,7 +230,7 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
   struct nlmsghdr *nlh;
   bool done = false;
 
-  nlh = nfq_hdr_put(NFQNL_MSG_VERDICT, queue_num);
+  nlh = nfq_hdr_put(nlbuf, NFQNL_MSG_VERDICT, queue_num);
 
   if (!accept)
   {
