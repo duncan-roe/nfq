@@ -64,7 +64,6 @@ static int passes = 0;
 static void usage(void);
 static int queue_cb(const struct nlmsghdr *nlh, void *data);
 static void nfq_send_verdict(int queue_num, uint32_t id, bool accept);
-static struct nlmsghdr *nfq_hdr_put(char *buf, int type, uint32_t queue_num);
 
 /* ********************************** main ********************************** */
 
@@ -150,7 +149,7 @@ main(int argc, char *argv[])
   }
   portid = mnl_socket_get_portid(nl);
 
-  nlh = nfq_hdr_put(nlbuf, NFQNL_MSG_CONFIG, queue_num);
+  nlh = nfq_nlmsg_put(nlbuf, NFQNL_MSG_CONFIG, queue_num);
   nfq_nlmsg_cfg_put_cmd(nlh, AF_INET6, NFQNL_CFG_CMD_BIND);
 
   if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
@@ -159,7 +158,7 @@ main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }
 
-  nlh = nfq_hdr_put(nlbuf, NFQNL_MSG_CONFIG, queue_num);
+  nlh = nfq_nlmsg_put(nlbuf, NFQNL_MSG_CONFIG, queue_num);
   nfq_nlmsg_cfg_put_params(nlh, NFQNL_COPY_PACKET, 0xffff);
 
   mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS,
@@ -205,23 +204,6 @@ main(int argc, char *argv[])
   return 0;
 }
 
-/* ******************************* nfq_hdr_put ****************************** */
-
-static struct nlmsghdr *
-nfq_hdr_put(char *buf, int type, uint32_t queue_num)
-{
-  struct nlmsghdr *nlh = mnl_nlmsg_put_header(buf);
-  nlh->nlmsg_type = (NFNL_SUBSYS_QUEUE << 8) | type;
-  nlh->nlmsg_flags = NLM_F_REQUEST;
-
-  struct nfgenmsg *nfg = mnl_nlmsg_put_extra_header(nlh, sizeof(*nfg));
-  nfg->nfgen_family = AF_UNSPEC;
-  nfg->version = NFNETLINK_V0;
-  nfg->res_id = htons(queue_num);
-
-  return nlh;
-}
-
 /* **************************** nfq_send_verdict **************************** */
 
 static void
@@ -230,7 +212,7 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
   struct nlmsghdr *nlh;
   bool done = false;
 
-  nlh = nfq_hdr_put(nlbuf, NFQNL_MSG_VERDICT, queue_num);
+  nlh = nfq_nlmsg_put(nlbuf, NFQNL_MSG_VERDICT, queue_num);
 
   if (!accept)
   {
