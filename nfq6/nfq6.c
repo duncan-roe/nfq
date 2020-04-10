@@ -52,8 +52,10 @@ static struct mnl_socket *nl;
 /* Largest possible packet payload, plus netlink data overhead: */
 static char nlrxbuf[0xffff + 4096];
 static char nltxbuf[sizeof nlrxbuf];
+#ifdef NFQ_STATICS
 static char pktbuf[sizeof nlrxbuf];
 static char head[64];
+#endif
 static struct pkt_buff *pktb;
 static bool tests[NUM_TESTS] = { false };
 static uint32_t packet_mark;
@@ -300,6 +302,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   uint8_t *p;
   int (*mangler) (struct pkt_buff *, unsigned int, unsigned int, const char *,
     unsigned int);
+  char head[pktb_head_size() + (tests[8] ? 4 : 0)];
 
   if (nfq_nlmsg_parse(nlh, attr) < 0)
   {
@@ -369,14 +372,20 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   }                                /* if (!normal) */
 
 /* Copy data to a packet buffer. Allow 255 bytes extra room */
+#define EXTRA 255
+#ifndef NFQ_STATICS
+  char pktbuf[plen + EXTRA];
+#endif
   if (tests[7])
   {
     if (tests[19])
       pktb = pktb_alloc2(AF_INET6, head + tests[8], sizeof head, payload, plen,
         0, NULL, 0);
     else
-      pktb = pktb_alloc2(AF_INET6, head, sizeof head, payload, plen, 255,
-        pktbuf + tests[8], sizeof pktbuf);
+    {
+      pktb = pktb_alloc2(AF_INET6, head + tests[8], sizeof head, payload, plen,
+        EXTRA, pktbuf, sizeof pktbuf);
+    }                              /* if (tests[19]) else */
     if (!pktb)
     {
       snprintf(erbuf, sizeof erbuf, "%s. (pktb_alloc2)\n", strerror(errno));
@@ -385,7 +394,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   }                                /* if (tests[7]) */
   else
   {
-    pktb = pktb_alloc(AF_INET6, payload, plen, 255);
+    pktb = pktb_alloc(AF_INET6, payload, plen, EXTRA);
     if (!pktb)
     {
       snprintf(erbuf, sizeof erbuf, "%s. (pktb_alloc)\n", strerror(errno));
@@ -421,8 +430,8 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
         for (i = passes; i; i--)
         {
           {
-            pktb = pktb_alloc2(AF_INET6, head, sizeof head, payload, plen, 255,
-              pktbuf + tests[8], sizeof pktbuf);
+            pktb = pktb_alloc2(AF_INET6, head + tests[8], sizeof head, payload,
+              plen, EXTRA, pktbuf, sizeof pktbuf);
             if (!pktb)
             {
               perror("pktb_alloc2"); /* Not expected ever */
@@ -436,7 +445,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
       for (i = passes; i; i--)
       {
         pktb_free(pktb);
-        pktb = pktb_alloc(AF_INET6, payload, plen, 255);
+        pktb = pktb_alloc(AF_INET6, payload, plen, EXTRA);
         if (!pktb)
         {
           perror("pktb_alloc");
