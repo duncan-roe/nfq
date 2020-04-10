@@ -50,14 +50,17 @@
 
 static struct mnl_socket *nl;
 /* Largest possible packet payload, plus netlink data overhead: */
-static char nlbuf[0xffff + 4096];
-static char pktbuf[sizeof nlbuf];
+static char nlrxbuf[0xffff + 4096];
+static char nltxbuf[sizeof nlrxbuf];
+static char pktbuf[sizeof nlrxbuf];
+static char head[64];
 static struct pkt_buff *pktb;
 static bool tests[NUM_TESTS] = { false };
 static uint32_t packet_mark;
 static int alternate_queue = 0;
 static bool quit = false;
 static int passes = 0;
+static struct nlattr *attr[NFQA_MAX + 1] = { };
 
 /* Static prototypes */
 
@@ -129,6 +132,12 @@ main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }                                /* if (tests[4] && !alternate_queue) */
 
+  if (tests[19] && !tests[7])
+  {
+    fputs("Test 19 is only valid during test 7\n", stderr);
+    exit(EXIT_FAILURE);
+  }                                /* if (tests[19] && !tests[7]) */
+
   setlinebuf(stdout);
 
 /* Initialise current time. If no error now, there never will be */
@@ -149,7 +158,7 @@ main(int argc, char *argv[])
   }
   portid = mnl_socket_get_portid(nl);
 
-  nlh = nfq_nlmsg_put(nlbuf, NFQNL_MSG_CONFIG, queue_num);
+  nlh = nfq_nlmsg_put(nltxbuf, NFQNL_MSG_CONFIG, queue_num);
   nfq_nlmsg_cfg_put_cmd(nlh, AF_INET6, NFQNL_CFG_CMD_BIND);
 
   if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
@@ -158,7 +167,7 @@ main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }
 
-  nlh = nfq_nlmsg_put(nlbuf, NFQNL_MSG_CONFIG, queue_num);
+  nlh = nfq_nlmsg_put(nltxbuf, NFQNL_MSG_CONFIG, queue_num);
   nfq_nlmsg_cfg_put_params(nlh, NFQNL_COPY_PACKET, 0xffff);
 
   mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS,
@@ -181,7 +190,7 @@ main(int argc, char *argv[])
 
   for (;;)
   {
-    ret = mnl_socket_recvfrom(nl, nlbuf, sizeof nlbuf);
+    ret = mnl_socket_recvfrom(nl, nlrxbuf, sizeof nlrxbuf);
     if (ret == -1)
     {
       perror("mnl_socket_recvfrom");
@@ -190,7 +199,7 @@ main(int argc, char *argv[])
       exit(EXIT_FAILURE);
     }
 
-    ret = mnl_cb_run(nlbuf, ret, 0, portid, queue_cb, NULL);
+    ret = mnl_cb_run(nlrxbuf, ret, 0, portid, queue_cb, NULL);
     if (ret < 0 && !(errno == EINTR || tests[14]))
     {
       perror("mnl_cb_run");
@@ -212,7 +221,7 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
   struct nlmsghdr *nlh;
   bool done = false;
 
-  nlh = nfq_nlmsg_put(nlbuf, NFQNL_MSG_VERDICT, queue_num);
+  nlh = nfq_nlmsg_put(nltxbuf, NFQNL_MSG_VERDICT, queue_num);
 
   if (!accept)
   {
@@ -275,7 +284,6 @@ static int
 queue_cb(const struct nlmsghdr *nlh, void *data)
 {
   struct nfqnl_msg_packet_hdr *ph = NULL;
-  struct nlattr *attr[NFQA_MAX + 1] = { };
   uint32_t id = 0, skbinfo;
   struct nfgenmsg *nfg;
   uint8_t *payload;
@@ -364,23 +372,20 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   if (tests[7])
   {
     if (tests[19])
-      pktb = pktb_make_data(AF_INET6, payload, plen, pktbuf + tests[8],
-        sizeof pktbuf);
+      pktb = pktb_alloc2(AF_INET6, head + tests[8], sizeof head, payload, plen,
+        0, NULL, 0);
     else
-      pktb = pktb_make(AF_INET6, payload, plen, 255, pktbuf + tests[8],
-        sizeof pktbuf);
+      pktb = pktb_alloc2(AF_INET6, head, sizeof head, payload, plen, 255,
+        pktbuf + tests[8], sizeof pktbuf);
     if (!pktb)
     {
-      snprintf(erbuf, sizeof erbuf, "%s. (pktb_make)\n", strerror(errno));
+      snprintf(erbuf, sizeof erbuf, "%s. (pktb_alloc2)\n", strerror(errno));
       GIVE_UP(erbuf);
     }                              /* if (!pktb) */
   }                                /* if (tests[7]) */
   else
   {
-    if (tests[19])
-      pktb = pktb_alloc_data(AF_INET6, payload, plen);
-    else
-      pktb = pktb_alloc(AF_INET6, payload, plen, 255);
+    pktb = pktb_alloc(AF_INET6, payload, plen, 255);
     if (!pktb)
     {
       snprintf(erbuf, sizeof erbuf, "%s. (pktb_alloc)\n", strerror(errno));
@@ -388,7 +393,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
     }                              /* if (!pktb) */
   }                                /* if (tests[7]) else */
 
-/* Get timings for pktb_make vs. pktb _alloc if requested */
+/* Get timings for pktb_alloc2 vs. pktb _alloc if requested */
   if (passes)
   {
     struct rusage usage[2];
@@ -402,11 +407,11 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
       {
         for (i = passes; i; i--)
         {
-          pktb = pktb_make_data(AF_INET6, payload, plen, pktbuf + tests[8],
-            sizeof pktbuf);
+          pktb = pktb_alloc2(AF_INET6, head + tests[8], sizeof head, payload,
+            plen, 0, NULL, 0);
           if (!pktb)
           {
-            perror("pktb_make");   /* Not expected ever */
+            perror("pktb_alloc2"); /* Not expected ever */
             break;
           }                        /* if (!pktb) */
         }                          /* for (i = passes; i; i--) */
@@ -416,11 +421,11 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
         for (i = passes; i; i--)
         {
           {
-            pktb = pktb_make(AF_INET6, payload, plen, 255, pktbuf + tests[8],
-              sizeof pktbuf);
+            pktb = pktb_alloc2(AF_INET6, head, sizeof head, payload, plen, 255,
+              pktbuf + tests[8], sizeof pktbuf);
             if (!pktb)
             {
-              perror("pktb_make"); /* Not expected ever */
+              perror("pktb_alloc2"); /* Not expected ever */
               break;
             }                      /* if (!pktb) */
           }                        /* for (i = passes; i; i--) */
@@ -428,32 +433,16 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
       }                            /* if (tests[7]) */
     else
     {
-      if (tests[19])
+      for (i = passes; i; i--)
       {
-        for (i = passes; i; i--)
+        pktb_free(pktb);
+        pktb = pktb_alloc(AF_INET6, payload, plen, 255);
+        if (!pktb)
         {
-          pktb_free(pktb);
-          pktb = pktb_alloc_data(AF_INET6, payload, plen);
-          if (!pktb)
-          {
-            perror("pktb_alloc");
-            break;
-          }                        /* if (!pktb) */
-        }                          /* for (i = passes; i; i--) */
-      }                            /* if (tests[19]) */
-      else
-      {
-        for (i = passes; i; i--)
-        {
-          pktb_free(pktb);
-          pktb = pktb_alloc(AF_INET6, payload, plen, 255);
-          if (!pktb)
-          {
-            perror("pktb_alloc");
-            break;
-          }                        /* if (!pktb) */
-        }                          /* for (i = passes; i; i--) */
-      }                            /* if (tests[19]) else */
+          perror("pktb_alloc");
+          break;
+        }                          /* if (!pktb) */
+      }                            /* for (i = passes; i; i--) */
     }                              /* if (tests[7]) else */
     i = getrusage(RUSAGE_SELF, usage + 1);
     if (i)
@@ -535,7 +524,7 @@ usage(void)
     "       nfq6 -h\n"             /*  */
     "  -a <n>: Alternate queue for test 4\n" /*  */
     "  -h: give this Help and exit\n" /*  */
-    "  -p <n>: Time <n> passes of pktb_make() or whatever on the first" /*  */
+    "  -p <n>: Time <n> passes of pktb_alloc2() or whatever on the first" /*  */
     " packet.\n"                   /*  */
     "          Forces on t6. It's expected the 2nd packet will be" /*  */
     " \"q\"\n"                     /*  */
@@ -550,8 +539,8 @@ usage(void)
     "    4: Send packets to alternate -a queue\n" /*  */
     "    5: Force on test 4 and specify BYPASS\n" /*  */
     "    6: Exit nfq6 if incoming packet contains 'q'\n" /*  */
-    "    7: Use pktb_make()\n"     /*  */
-    "    8: Give pktb_make() an odd address\n" /*  */
+    "    7: Use pktb_alloc2()\n"   /*  */
+    "    8: Give pktb_alloc2() an odd address\n" /*  */
     "    9: Replace 1st ASD by F\n" /*  */
     "   10: Replace 1st QWE by RTYUIOP\n" /*  */
     "   11: Replace 2nd ASD by G\n" /*  */
@@ -562,6 +551,6 @@ usage(void)
     "   16: Log all netlink packets\n" /*  */
     "   17: Replace 1st ZXC by VBN\n" /*  */
     "   18: Replace 2nd ZXC by VBN\n" /*  */
-    "   19: Use _data variants of pktb_alloc & pktb_make\n" /*  */
+    "   19: Give pktb_alloc2 zero extra\n" /*  */
     );
 }                                  /* static void usage(void) */
