@@ -302,7 +302,9 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   uint8_t *p;
   int (*mangler) (struct pkt_buff *, unsigned int, unsigned int, const char *,
     unsigned int);
-  char head[pktb_head_size() + (tests[8] ? 4 : 0)];
+#ifndef NFQ_STATICS
+  char head[pktb_head_size()];
+#endif
 
   if (nfq_nlmsg_parse(nlh, attr) < 0)
   {
@@ -379,12 +381,14 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   if (tests[7])
   {
     if (tests[19])
-      pktb = pktb_alloc2(AF_INET6, head + tests[8], sizeof head, payload, plen,
-        0, NULL, 0);
+      pktb =
+        pktb_alloc2(AF_INET6, head + tests[8], sizeof head - tests[8], payload,
+        plen, 0, NULL, 0);
     else
     {
-      pktb = pktb_alloc2(AF_INET6, head + tests[8], sizeof head, payload, plen,
-        EXTRA, pktbuf, sizeof pktbuf);
+      pktb =
+        pktb_alloc2(AF_INET6, head + tests[8], sizeof head - tests[8], payload,
+        plen, EXTRA, pktbuf, sizeof pktbuf);
     }                              /* if (tests[19]) else */
     if (!pktb)
     {
@@ -416,8 +420,9 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
       {
         for (i = passes; i; i--)
         {
-          pktb = pktb_alloc2(AF_INET6, head + tests[8], sizeof head, payload,
-            plen, 0, NULL, 0);
+          pktb =
+            pktb_alloc2(AF_INET6, head + tests[8], sizeof head - tests[8],
+            payload, plen, 0, NULL, 0);
           if (!pktb)
           {
             perror("pktb_alloc2"); /* Not expected ever */
@@ -430,8 +435,9 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
         for (i = passes; i; i--)
         {
           {
-            pktb = pktb_alloc2(AF_INET6, head + tests[8], sizeof head, payload,
-              plen, EXTRA, pktbuf, sizeof pktbuf);
+            pktb =
+              pktb_alloc2(AF_INET6, head + tests[8], sizeof head - tests[8],
+              payload, plen, EXTRA, pktbuf, sizeof pktbuf);
             if (!pktb)
             {
               perror("pktb_alloc2"); /* Not expected ever */
