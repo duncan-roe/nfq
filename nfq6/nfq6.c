@@ -30,7 +30,7 @@
 
 /* Macros */
 
-#define NUM_TESTS 20
+#define NUM_TESTS 21
 
 /* If bool is a macro, get rid of it */
 
@@ -63,6 +63,8 @@ static int alternate_queue = 0;
 static bool quit = false;
 static int passes = 0;
 static struct nlattr *attr[NFQA_MAX + 1] = { };
+static socklen_t buffersize = 1024 * 1024 * 8;
+static socklen_t socklen = sizeof buffersize, read_size = 0;
 
 /* Static prototypes */
 
@@ -159,6 +161,18 @@ main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }
   portid = mnl_socket_get_portid(nl);
+
+  if (tests[20])
+  {
+    if (setsockopt(mnl_socket_get_fd(nl), SOL_SOCKET, SO_RCVBUFFORCE,
+      &buffersize, sizeof(socklen_t)) == -1)
+      fprintf(stderr, "%s. setsockopt SO_RCVBUFFORCE 0x%x\n", strerror(errno),
+        buffersize);
+  }                                /* if (tests[20]) */
+  getsockopt(mnl_socket_get_fd(nl), SOL_SOCKET, SO_RCVBUF, &read_size,
+    &socklen);
+  printf("Read buffer set to 0x%x bytes (%dMB)\n", read_size,
+    read_size / (1024 * 1024));
 
   nlh = nfq_nlmsg_put(nltxbuf, NFQNL_MSG_CONFIG, queue_num);
   nfq_nlmsg_cfg_put_cmd(nlh, AF_INET6, NFQNL_CFG_CMD_BIND);
@@ -567,5 +581,6 @@ usage(void)
     "   17: Replace 1st ZXC by VBN\n" /*  */
     "   18: Replace 2nd ZXC by VBN\n" /*  */
     "   19: Give pktb_alloc2 zero extra\n" /*  */
+    "   20: Set 16MB kernel socket buffer\n" /*  */
     );
 }                                  /* static void usage(void) */
