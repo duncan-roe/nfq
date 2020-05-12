@@ -6,6 +6,7 @@
 
 /* System headers */
 
+#define _GNU_SOURCE
 #include <time.h>
 #include <errno.h>
 #include <stdio.h>
@@ -54,7 +55,6 @@ static char nlrxbuf[0xffff + 4096];
 static char nltxbuf[sizeof nlrxbuf];
 #ifdef NFQ_STATICS
 static char pktbuf[sizeof nlrxbuf];
-static char head[64];
 #endif
 static struct pkt_buff *pktb;
 static bool tests[NUM_TESTS] = { false };
@@ -65,6 +65,7 @@ static int passes = 0;
 static struct nlattr *attr[NFQA_MAX + 1] = { };
 static socklen_t buffersize = 1024 * 1024 * 8;
 static socklen_t socklen = sizeof buffersize, read_size = 0;
+static size_t sizeof_pktb;
 
 /* Static prototypes */
 
@@ -81,6 +82,8 @@ main(int argc, char *argv[])
   int ret;
   unsigned int portid, queue_num;
   int i;
+
+  sizeof_pktb = pktb_head_size();
 
   while ((i = getopt(argc, argv, "a:hp:t:")) != -1)
   {
@@ -304,6 +307,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   struct nfgenmsg *nfg;
   uint8_t *payload;
   uint8_t *xxp_payload;
+  unsigned int xxp_payload_len;
   bool accept = true;
   struct udphdr *udph;
   struct tcphdr *tcph;
@@ -317,7 +321,6 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   int (*mangler) (struct pkt_buff *, unsigned int, unsigned int, const char *,
     unsigned int);
 #ifndef NFQ_STATICS
-  char head[pktb_head_size()];
 #endif
 
   if (nfq_nlmsg_parse(nlh, attr) < 0)
@@ -390,19 +393,19 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
 /* Copy data to a packet buffer. Allow 255 bytes extra room */
 #define EXTRA 255
 #ifndef NFQ_STATICS
-  char pktbuf[plen + EXTRA];
+  char pktbuf[plen + EXTRA + sizeof_pktb];
 #endif
   if (tests[7])
   {
     if (tests[19])
       pktb =
-        pktb_alloc2(AF_INET6, head + tests[8], sizeof head - tests[8], payload,
-        plen, 0, NULL, 0);
+        pktb_alloc2(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
+        payload, plen);
     else
     {
       pktb =
-        pktb_alloc2(AF_INET6, head + tests[8], sizeof head - tests[8], payload,
-        plen, EXTRA, pktbuf, sizeof pktbuf);
+        pktb_alloc2(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
+        payload, plen);
     }                              /* if (tests[19]) else */
     if (!pktb)
     {
@@ -435,8 +438,8 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
         for (i = passes; i; i--)
         {
           pktb =
-            pktb_alloc2(AF_INET6, head + tests[8], sizeof head - tests[8],
-            payload, plen, 0, NULL, 0);
+            pktb_alloc2(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
+            payload, plen);
           if (!pktb)
           {
             perror("pktb_alloc2"); /* Not expected ever */
@@ -450,8 +453,8 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
         {
           {
             pktb =
-              pktb_alloc2(AF_INET6, head + tests[8], sizeof head - tests[8],
-              payload, plen, EXTRA, pktbuf, sizeof pktbuf);
+              pktb_alloc2(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
+              payload, plen);
             if (!pktb)
             {
               perror("pktb_alloc2"); /* Not expected ever */
@@ -497,6 +500,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
       GIVE_UP("Packet too short to get TCP header\n");
     if (!(xxp_payload = nfq_tcp_get_payload(tcph, pktb)))
       GIVE_UP("Packet too short to get TCP payload\n");
+    xxp_payload_len = nfq_tcp_get_payload_len(tcph, pktb);
   }                                /* if (tests[13]) */
   else
   {
@@ -507,30 +511,74 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
       GIVE_UP("Packet too short to get UDP header\n");
     if (!(xxp_payload = nfq_udp_get_payload(udph, pktb)))
       GIVE_UP("Packet too short to get UDP payload\n");
+    xxp_payload_len = nfq_udp_get_payload_len(udph, pktb);
   }                                /* if (tests[13]) else */
 
-  if (tests[6] && strchr(xxp_payload, 'q'))
+  if (tests[6] && memchr(xxp_payload, 'q', xxp_payload_len))
   {
     accept = false;                /* Drop this packet */
     quit = true;                   /* Exit after giving verdict */
   }                              /* if (tests[6] && strchr(xxp_payload, 'q')) */
 
-  if (tests[9] && (p = strstr(xxp_payload, "ASD")))
+  if (tests[9] && (p = memmem(xxp_payload, xxp_payload_len, "ASD", 3)))
+  {
     mangler(pktb, p - xxp_payload, 3, "F", 1);
+    xxp_payload_len -= 2;
+  }                                /* tests[9] */
 
-  if (tests[10] && (p = strstr(xxp_payload, "QWE")))
-    mangler(pktb, p - xxp_payload, 3, "RTYUIOP", 7);
+  if (tests[10] && (p = memmem(xxp_payload, xxp_payload_len, "QWE", 3)))
+  {
+    if (mangler(pktb, p - xxp_payload, 3, "RTYUIOP", 7))
+    {
+      xxp_payload_len += 4;
 
-  if (tests[11] && (p = strstr(xxp_payload, "ASD")))
+/* Need to re-fetch pointers after this mangle */
+      if (tests[13])
+      {
+        tcph = nfq_tcp_get_hdr(pktb);
+        xxp_payload = nfq_tcp_get_payload(tcph, pktb);
+      }                            /* if (tests[13]) */
+      else
+      {
+        udph = nfq_udp_get_hdr(pktb);
+        xxp_payload = nfq_udp_get_payload(udph, pktb);
+      }                            /* if (tests[13]) else */
+    }                  /* if(mangler(pktb, p - xxp_payload, 3, "RTYUIOP", 7)) */
+    else
+    fputs("QWE -> RTYUIOP mangle FAILED\n", stderr);
+  }                     /* if (tests[10] && (p = strstr(xxp_payload, "QWE"))) */
+
+  if (tests[11] && (p = memmem(xxp_payload, xxp_payload_len, "ASD", 3)))
+  {
     mangler(pktb, p - xxp_payload, 3, "G", 1);
+    xxp_payload_len -= 2;
+  }
 
-  if (tests[12] && (p = strstr(xxp_payload, "QWE")))
-    mangler(pktb, p - xxp_payload, 3, "MNBVCXZ", 7);
+  if (tests[12] && (p = memmem(xxp_payload, xxp_payload_len, "QWE", 3)))
+  {
+    if(mangler(pktb, p - xxp_payload, 3, "MNBVCXZ", 7))
+    {
+      xxp_payload_len += 4;
+      if (tests[13])
+      {
+        tcph = nfq_tcp_get_hdr(pktb);
+        xxp_payload = nfq_tcp_get_payload(tcph, pktb);
+      }                            /* if (tests[13]) */
+      else
+      {
+        udph = nfq_udp_get_hdr(pktb);
+        xxp_payload = nfq_udp_get_payload(udph, pktb);
+      }                            /* if (tests[13]) else */
+    }                  /* if(mangler(pktb, p - xxp_payload, 3, "RTYUIOP", 7)) */
+    else
+    fputs("QWE -> MNBVCXZ mangle FAILED\n", stderr);
+  }                     /* if (tests[12] && (p = strstr(xxp_payload, "QWE"))) */
 
-  if (tests[17] && (p = strstr(xxp_payload, "ZXC")))
+
+  if (tests[17] && (p = memmem(xxp_payload, xxp_payload_len, "ZXC", 3)))
     mangler(pktb, p - xxp_payload, 3, "VBN", 3);
 
-  if (tests[18] && (p = strstr(xxp_payload, "ZXC")))
+  if (tests[18] && (p = memmem(xxp_payload, xxp_payload_len, "ZXC", 3)))
     mangler(pktb, p - xxp_payload, 3, "VBN", 3);
 
 send_verdict:
