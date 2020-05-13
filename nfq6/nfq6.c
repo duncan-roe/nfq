@@ -320,8 +320,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   uint8_t *p;
   int (*mangler) (struct pkt_buff *, unsigned int, unsigned int, const char *,
     unsigned int);
-#ifndef NFQ_STATICS
-#endif
+  char *errfunc;
 
   if (nfq_nlmsg_parse(nlh, attr) < 0)
   {
@@ -397,31 +396,21 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
 #endif
   if (tests[7])
   {
-    if (tests[19])
-      pktb =
-        pktb_alloc2(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
-        payload, plen);
-    else
-    {
-      pktb =
-        pktb_alloc2(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
-        payload, plen);
-    }                              /* if (tests[19]) else */
-    if (!pktb)
-    {
-      snprintf(erbuf, sizeof erbuf, "%s. (pktb_alloc2)\n", strerror(errno));
-      GIVE_UP(erbuf);
-    }                              /* if (!pktb) */
+    pktb =
+      pktb_alloc2(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
+      payload, plen);
+    errfunc = "pktb_alloc2";
   }                                /* if (tests[7]) */
   else
   {
     pktb = pktb_alloc(AF_INET6, payload, plen, EXTRA);
-    if (!pktb)
-    {
-      snprintf(erbuf, sizeof erbuf, "%s. (pktb_alloc)\n", strerror(errno));
-      GIVE_UP(erbuf);
-    }                              /* if (!pktb) */
+    errfunc = "pktb_alloc";
   }                                /* if (tests[7]) else */
+  if (!pktb)
+  {
+    snprintf(erbuf, sizeof erbuf, "%s. (%s)\n", strerror(errno), errfunc);
+    GIVE_UP(erbuf);
+  }                                /* if (!pktb) */
 
 /* Get timings for pktb_alloc2 vs. pktb _alloc if requested */
   if (passes)
@@ -545,7 +534,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
       }                            /* if (tests[13]) else */
     }                  /* if(mangler(pktb, p - xxp_payload, 3, "RTYUIOP", 7)) */
     else
-    fputs("QWE -> RTYUIOP mangle FAILED\n", stderr);
+      fputs("QWE -> RTYUIOP mangle FAILED\n", stderr);
   }                     /* if (tests[10] && (p = strstr(xxp_payload, "QWE"))) */
 
   if (tests[11] && (p = memmem(xxp_payload, xxp_payload_len, "ASD", 3)))
@@ -556,7 +545,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
 
   if (tests[12] && (p = memmem(xxp_payload, xxp_payload_len, "QWE", 3)))
   {
-    if(mangler(pktb, p - xxp_payload, 3, "MNBVCXZ", 7))
+    if (mangler(pktb, p - xxp_payload, 3, "MNBVCXZ", 7))
     {
       xxp_payload_len += 4;
       if (tests[13])
@@ -571,7 +560,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
       }                            /* if (tests[13]) else */
     }                  /* if(mangler(pktb, p - xxp_payload, 3, "RTYUIOP", 7)) */
     else
-    fputs("QWE -> MNBVCXZ mangle FAILED\n", stderr);
+      fputs("QWE -> MNBVCXZ mangle FAILED\n", stderr);
   }                     /* if (tests[12] && (p = strstr(xxp_payload, "QWE"))) */
 
 
@@ -628,7 +617,7 @@ usage(void)
     "   16: Log all netlink packets\n" /*  */
     "   17: Replace 1st ZXC by VBN\n" /*  */
     "   18: Replace 2nd ZXC by VBN\n" /*  */
-    "   19: Give pktb_alloc2 zero extra\n" /*  */
+    "   19: Give pktb_alloc2 zero extra [DEFUNCT]\n" /*  */
     "   20: Set 16MB kernel socket buffer\n" /*  */
     );
 }                                  /* static void usage(void) */
