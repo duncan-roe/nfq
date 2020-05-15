@@ -397,9 +397,9 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   if (tests[7])
   {
     pktb =
-      pktb_alloc2(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
+      pktb_setup(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
       payload, plen);
-    errfunc = "pktb_alloc2";
+    errfunc = "pktb_setup";
   }                                /* if (tests[7]) */
   else
   {
@@ -412,7 +412,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
     GIVE_UP(erbuf);
   }                                /* if (!pktb) */
 
-/* Get timings for pktb_alloc2 vs. pktb _alloc if requested */
+/* Get timings for pktb_setup vs. pktb _alloc if requested */
   if (passes)
   {
     struct rusage usage[2];
@@ -427,11 +427,11 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
         for (i = passes; i; i--)
         {
           pktb =
-            pktb_alloc2(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
+            pktb_setup(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
             payload, plen);
           if (!pktb)
           {
-            perror("pktb_alloc2"); /* Not expected ever */
+            perror("pktb_setup"); /* Not expected ever */
             break;
           }                        /* if (!pktb) */
         }                          /* for (i = passes; i; i--) */
@@ -442,11 +442,11 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
         {
           {
             pktb =
-              pktb_alloc2(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
+              pktb_setup(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
               payload, plen);
             if (!pktb)
             {
-              perror("pktb_alloc2"); /* Not expected ever */
+              perror("pktb_setup"); /* Not expected ever */
               break;
             }                      /* if (!pktb) */
           }                        /* for (i = passes; i; i--) */
@@ -590,7 +590,7 @@ usage(void)
     "       nfq6 -h\n"             /*  */
     "  -a <n>: Alternate queue for test 4\n" /*  */
     "  -h: give this Help and exit\n" /*  */
-    "  -p <n>: Time <n> passes of pktb_alloc2() or whatever on the first" /*  */
+    "  -p <n>: Time <n> passes of pktb_setup() or whatever on the first" /*  */
     " packet.\n"                   /*  */
     "          Forces on t6. It's expected the 2nd packet will be" /*  */
     " \"q\"\n"                     /*  */
@@ -605,8 +605,8 @@ usage(void)
     "    4: Send packets to alternate -a queue\n" /*  */
     "    5: Force on test 4 and specify BYPASS\n" /*  */
     "    6: Exit nfq6 if incoming packet contains 'q'\n" /*  */
-    "    7: Use pktb_alloc2()\n"   /*  */
-    "    8: Give pktb_alloc2() an odd address\n" /*  */
+    "    7: Use pktb_setup()\n"   /*  */
+    "    8: Give pktb_setup() an odd address\n" /*  */
     "    9: Replace 1st ASD by F\n" /*  */
     "   10: Replace 1st QWE by RTYUIOP\n" /*  */
     "   11: Replace 2nd ASD by G\n" /*  */
@@ -617,7 +617,7 @@ usage(void)
     "   16: Log all netlink packets\n" /*  */
     "   17: Replace 1st ZXC by VBN\n" /*  */
     "   18: Replace 2nd ZXC by VBN\n" /*  */
-    "   19: Give pktb_alloc2 zero extra [DEFUNCT]\n" /*  */
+    "   19: Give pktb_setup zero extra [DEFUNCT]\n" /*  */
     "   20: Set 16MB kernel socket buffer\n" /*  */
     );
 }                                  /* static void usage(void) */
