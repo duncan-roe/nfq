@@ -3,6 +3,8 @@
 /* pragmas */
 
 #pragma GCC diagnostic ignored "-Wpointer-sign"
+#pragma GCC diagnostic ignored "-Wparentheses"
+#pragma GCC diagnostic ignored "-Wpointer-arith"
 
 /* System headers */
 
@@ -82,6 +84,7 @@ main(int argc, char *argv[])
   int ret;
   unsigned int portid, queue_num;
   int i;
+  static const struct sockaddr ss = {.sa_family = AF_NETLINK };
 
   sizeof_pktb = pktb_head_size();
 
@@ -177,6 +180,15 @@ main(int argc, char *argv[])
   printf("Read buffer set to 0x%x bytes (%dMB)\n", read_size,
     read_size / (1024 * 1024));
 
+  if (tests[19])
+  {
+    if (connect(mnl_socket_get_fd(nl), &ss, 12) < 0)
+    {
+      perror("connect");
+      tests[19] = false;
+    }                         /* if (connect(mnl_socket_get_fd(nl), &ss, 12)) */
+  }                                /* if (tests[19]) */
+
   nlh = nfq_nlmsg_put(nltxbuf, NFQNL_MSG_CONFIG, queue_num);
   nfq_nlmsg_cfg_put_cmd(nlh, AF_INET6, NFQNL_CFG_CMD_BIND);
 
@@ -239,8 +251,14 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
 {
   struct nlmsghdr *nlh;
   bool done = false;
+  int iovidx = 0;
+  struct iovec iov[4];
+  char padbuf[3];
 
   nlh = nfq_nlmsg_put(nltxbuf, NFQNL_MSG_VERDICT, queue_num);
+
+  if (tests[19])
+    iov[0].iov_base = nlh;
 
   if (!accept)
   {
@@ -249,7 +267,30 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
   }                                /* if (!accept) */
 
   if (pktb_mangled(pktb))
-    nfq_nlmsg_verdict_put_pkt(nlh, pktb_data(pktb), pktb_len(pktb));
+    if (tests[19])
+    {
+      struct nlattr *attrib = mnl_nlmsg_get_payload_tail(nlh);
+      size_t len = pktb_len(pktb);
+      uint16_t payload_len = MNL_ALIGN(sizeof(struct nlattr)) + len;
+      int pad;
+
+      attrib->nla_type = NFQA_PAYLOAD;
+      attrib->nla_len = payload_len;
+      nlh->nlmsg_len += sizeof(struct nlattr);
+      iov[iovidx].iov_len = nlh->nlmsg_len;
+      iov[++iovidx].iov_base = pktb_data(pktb);
+      iov[iovidx].iov_len = pktb_len(pktb);
+      pad = MNL_ALIGN(len) - len;
+      if (pad)
+      {
+        memset(padbuf, 0, pad);
+        iov[++iovidx].iov_base = padbuf;
+        iov[iovidx].iov_len = pad;
+      }                            /* if (pad) */
+      iov[++iovidx].iov_base = iov[0].iov_base + iov[0].iov_len;
+    }                              /* if (tests[19]) */
+    else
+      nfq_nlmsg_verdict_put_pkt(nlh, pktb_data(pktb), pktb_len(pktb));
 
   if (tests[0] && !packet_mark)
   {
@@ -282,11 +323,32 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
     nfq_nlmsg_verdict_put(nlh, id, NF_ACCEPT);
 
 send_verdict:
-  if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
+  if (tests[19])
   {
-    perror("mnl_socket_send");
-    exit(EXIT_FAILURE);
-  }
+    if (iovidx)
+    {
+      int i;
+
+      iov[iovidx].iov_len = nlh->nlmsg_len - iov[0].iov_len;
+      for (i = 1; i < iovidx; i++)
+        nlh->nlmsg_len += iov[i].iov_len;
+    }                              /* if (iovidx) */
+    else
+      iov[0].iov_len = nlh->nlmsg_len;
+    if (writev(mnl_socket_get_fd(nl), iov, iovidx + 1) < 0)
+    {
+      perror("writev");
+      exit(EXIT_FAILURE);
+    }           /* if (write(mnl_socket_get_fd(nl), nlh, nlh->nlmsg_len) < 0) */
+  }                                /* if (tests[19]) */
+  else
+  {
+    if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
+    {
+      perror("mnl_socket_send");
+      exit(EXIT_FAILURE);
+    }
+  }                                /* if (tests[19]) else */
   if (quit)
     exit(0);
 }
@@ -431,7 +493,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
             payload, plen);
           if (!pktb)
           {
-            perror("pktb_setup"); /* Not expected ever */
+            perror("pktb_setup");  /* Not expected ever */
             break;
           }                        /* if (!pktb) */
         }                          /* for (i = passes; i; i--) */
@@ -605,7 +667,7 @@ usage(void)
     "    4: Send packets to alternate -a queue\n" /*  */
     "    5: Force on test 4 and specify BYPASS\n" /*  */
     "    6: Exit nfq6 if incoming packet contains 'q'\n" /*  */
-    "    7: Use pktb_setup()\n"   /*  */
+    "    7: Use pktb_setup()\n"    /*  */
     "    8: Give pktb_setup() an odd address\n" /*  */
     "    9: Replace 1st ASD by F\n" /*  */
     "   10: Replace 1st QWE by RTYUIOP\n" /*  */
@@ -617,7 +679,7 @@ usage(void)
     "   16: Log all netlink packets\n" /*  */
     "   17: Replace 1st ZXC by VBN\n" /*  */
     "   18: Replace 2nd ZXC by VBN\n" /*  */
-    "   19: Give pktb_setup zero extra [DEFUNCT]\n" /*  */
+    "   19: Use writev to avoid memcpy after mangling\n" /*  */
     "   20: Set 16MB kernel socket buffer\n" /*  */
     );
 }                                  /* static void usage(void) */
