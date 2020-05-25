@@ -58,7 +58,7 @@ Run each of these in a separate window
 To test with a listening netcat on another system on the local LAN, look up its
 IPv6 address via *ifconfig* then connect similarly to this:
 <br />
-`nc -6 -t fe80::1a60:24ff:febb:2d6%eth0 1042`
+`nc -6 -u fe80::1a60:24ff:febb:2d6%eth0 1042`
 <br />
 (you need to use another system to test checksums)
 
