@@ -68,6 +68,7 @@ static struct nlattr *attr[NFQA_MAX + 1] = { };
 static socklen_t buffersize = 1024 * 1024 * 8;
 static socklen_t socklen = sizeof buffersize, read_size = 0;
 static size_t sizeof_pktb;
+static struct sockaddr_nl snl = {.nl_family = AF_NETLINK };
 
 /* Static prototypes */
 
@@ -84,7 +85,6 @@ main(int argc, char *argv[])
   int ret;
   unsigned int portid, queue_num;
   int i;
-  static const struct sockaddr ss = {.sa_family = AF_NETLINK };
 
   sizeof_pktb = pktb_head_size();
 
@@ -142,11 +142,11 @@ main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }                                /* if (tests[4] && !alternate_queue) */
 
-  if (tests[19] && !tests[7])
+  if (tests[19] && tests[8])
   {
-    fputs("Test 19 is only valid during test 7\n", stderr);
+    fputs("Tests 8 & 19 are mutually exclusive\n", stderr);
     exit(EXIT_FAILURE);
-  }                                /* if (tests[19] && !tests[7]) */
+  }                                /* if (tests[19] && tests[8]) */
 
   setlinebuf(stdout);
 
@@ -182,11 +182,12 @@ main(int argc, char *argv[])
 
   if (tests[19])
   {
-    if (connect(mnl_socket_get_fd(nl), &ss, 12) < 0)
+    if (connect(mnl_socket_get_fd(nl), (const struct sockaddr *)&snl,
+      sizeof snl) < 0)
     {
       perror("connect");
       tests[19] = false;
-    }                         /* if (connect(mnl_socket_get_fd(nl), &ss, 12)) */
+    }                        /* if (connect(mnl_socket_get_fd(nl), &snl, 12)) */
   }                                /* if (tests[19]) */
 
   nlh = nfq_nlmsg_put(nltxbuf, NFQNL_MSG_CONFIG, queue_num);
@@ -257,7 +258,7 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
 
   nlh = nfq_nlmsg_put(nltxbuf, NFQNL_MSG_VERDICT, queue_num);
 
-  if (tests[19])
+  if (tests[19] || tests[8])
     iov[0].iov_base = nlh;
 
   if (!accept)
@@ -267,7 +268,7 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
   }                                /* if (!accept) */
 
   if (pktb_mangled(pktb))
-    if (tests[19])
+    if (tests[19] || tests[8])
     {
       struct nlattr *attrib = mnl_nlmsg_get_payload_tail(nlh);
       size_t len = pktb_len(pktb);
@@ -288,7 +289,7 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
         iov[iovidx].iov_len = pad;
       }                            /* if (pad) */
       iov[++iovidx].iov_base = iov[0].iov_base + iov[0].iov_len;
-    }                              /* if (tests[19]) */
+    }                              /* if (tests[19] ...) */
     else
       nfq_nlmsg_verdict_put_pkt(nlh, pktb_data(pktb), pktb_len(pktb));
 
@@ -323,7 +324,7 @@ nfq_send_verdict(int queue_num, uint32_t id, bool accept)
     nfq_nlmsg_verdict_put(nlh, id, NF_ACCEPT);
 
 send_verdict:
-  if (tests[19])
+  if (tests[19] || tests[8])
   {
     if (iovidx)
     {
@@ -335,20 +336,40 @@ send_verdict:
     }                              /* if (iovidx) */
     else
       iov[0].iov_len = nlh->nlmsg_len;
-    if (writev(mnl_socket_get_fd(nl), iov, iovidx + 1) < 0)
+    if (tests[8])
     {
-      perror("writev");
-      exit(EXIT_FAILURE);
-    }           /* if (write(mnl_socket_get_fd(nl), nlh, nlh->nlmsg_len) < 0) */
-  }                                /* if (tests[19]) */
+      const struct msghdr msg = {
+        .msg_name = &snl,
+        .msg_namelen = sizeof snl,
+        .msg_iov = iov,
+        .msg_iovlen = iovidx + (iov[iovidx].iov_len ? 1 : 0),
+        .msg_control = NULL,
+        .msg_controllen = 0,
+        .msg_flags = 0,
+      };                           /* const struct msghdr msg = */
+      if (sendmsg(mnl_socket_get_fd(nl), &msg, 0) < 0)
+      {
+        perror("sendmsg");
+        exit(EXIT_FAILURE);
+      }                   /* if (sendmsg(mnl_socket_get_fd(nl), &msg, 0) < 0) */
+    }                              /* if (tests[8]) */
+    else
+    {
+      if (writev(mnl_socket_get_fd(nl), iov, iovidx + 1) < 0)
+      {
+        perror("writev");
+        exit(EXIT_FAILURE);
+      }         /* if (write(mnl_socket_get_fd(nl), nlh, nlh->nlmsg_len) < 0) */
+    }                              /* if (tests[8]) else */
+  }                                /* if (tests[19] ...) */
   else
   {
     if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
     {
-      perror("mnl_socket_send");
+      perror("mnl_socket_sendto");
       exit(EXIT_FAILURE);
     }
-  }                                /* if (tests[19]) else */
+  }                                /* if (tests[19] ...) else */
   if (quit)
     exit(0);
 }
@@ -458,9 +479,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
 #endif
   if (tests[7])
   {
-    pktb =
-      pktb_setup(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
-      payload, plen);
+    pktb = pktb_setup(AF_INET6, pktbuf, sizeof pktbuf, payload, plen);
     errfunc = "pktb_setup";
   }                                /* if (tests[7]) */
   else
@@ -484,36 +503,17 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
     if (i)
       perror("getrusage");
     if (tests[7])
-      if (tests[19])
+    {
+      for (i = passes; i; i--)
       {
-        for (i = passes; i; i--)
+        pktb = pktb_setup(AF_INET6, pktbuf, sizeof pktbuf, payload, plen);
+        if (!pktb)
         {
-          pktb =
-            pktb_setup(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
-            payload, plen);
-          if (!pktb)
-          {
-            perror("pktb_setup");  /* Not expected ever */
-            break;
-          }                        /* if (!pktb) */
-        }                          /* for (i = passes; i; i--) */
-      }                            /* if (tests[19]) */
-      else
-      {
-        for (i = passes; i; i--)
-        {
-          {
-            pktb =
-              pktb_setup(AF_INET6, pktbuf + tests[8], sizeof pktbuf - tests[8],
-              payload, plen);
-            if (!pktb)
-            {
-              perror("pktb_setup"); /* Not expected ever */
-              break;
-            }                      /* if (!pktb) */
-          }                        /* for (i = passes; i; i--) */
-        }                          /* if (tests[19]) else */
-      }                            /* if (tests[7]) */
+          perror("pktb_setup");    /* Not expected ever */
+          break;
+        }                          /* if (!pktb) */
+      }                            /* for (i = passes; i; i--) */
+    }                              /* if (tests[7]) */
     else
     {
       for (i = passes; i; i--)
@@ -668,7 +668,7 @@ usage(void)
     "    5: Force on test 4 and specify BYPASS\n" /*  */
     "    6: Exit nfq6 if incoming packet contains 'q'\n" /*  */
     "    7: Use pktb_setup()\n"    /*  */
-    "    8: Give pktb_setup() an odd address\n" /*  */
+    "    8: Use sendmsg to avoid memcpy after mangling\n" /*  */
     "    9: Replace 1st ASD by F\n" /*  */
     "   10: Replace 1st QWE by RTYUIOP\n" /*  */
     "   11: Replace 2nd ASD by G\n" /*  */
