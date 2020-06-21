@@ -10,8 +10,12 @@ them from the
 [mailing list archive](http://www.spinics.net/lists/netfilter-devel/)
 (in the browser, search for _libnetfilter\_queue_).
 <br />
-At time of writing (2020-04-13 11:08:06 +1000), you need
-[this](https://www.spinics.net/lists/netfilter-devel/msg66710.html).
+At time of writing (2020-06-21 13:20:31 +1000), you need
+[this](https://www.spinics.net/lists/netfilter-devel/msg67138.html) and
+[this](https://www.spinics.net/lists/netfilter-devel/msg67193.html).
+<br />
+Use `patch -p1 -l` (ell) if you select and paste these patches. Some spacing
+comes over wrong, so indenting will be out in places but you can still build.
 
 ## nfq6 Invocation
 The command `nfq6 -h` is always up to date. At time of writing, it gives
@@ -20,7 +24,7 @@ The command `nfq6 -h` is always up to date. At time of writing, it gives
            nfq6 -h
       -a <n>: Alternate queue for test 4
       -h: give this Help and exit
-      -p <n>: Time <n> passes of pktb_alloc2() or whatever on the first packet.
+      -p <n>: Time <n> passes of pktb_setup() or whatever on the first packet.
               Forces on t6. It's expected the 2nd packet will be "q"
       -t <n>: do Test <n>. Tests are:
         0: If packet mark is zero, set it to 0xbeef and give verdict NF_REPEAT
@@ -31,8 +35,8 @@ The command `nfq6 -h` is always up to date. At time of writing, it gives
         4: Send packets to alternate -a queue
         5: Force on test 4 and specify BYPASS
         6: Exit nfq6 if incoming packet contains 'q'
-        7: Use pktb_alloc2()
-        8: Give pktb_alloc2() an odd address
+        7: Use pktb_setup()
+        8: Use sendmsg to avoid memcpy after mangling
         9: Replace 1st ASD by F
        10: Replace 1st QWE by RTYUIOP
        11: Replace 2nd ASD by G
@@ -43,7 +47,7 @@ The command `nfq6 -h` is always up to date. At time of writing, it gives
        16: Log all netlink packets
        17: Replace 1st ZXC by VBN
        18: Replace 2nd ZXC by VBN
-       19: Give pktb_alloc2 zero extra
+       19: Use writev to avoid memcpy after mangling
        20: Set 16MB kernel socket buffer
 
 ## Useful command lines
