@@ -22,6 +22,7 @@
 #include <libnetfilter_queue/pktbuff.h>
 #include <linux/netfilter/nfnetlink_queue.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
+#include <libnetfilter_queue/linux_nfnetlink_queue.h>
 #include <libnetfilter_queue/libnetfilter_queue_udp.h>
 #include <libnetfilter_queue/libnetfilter_queue_ipv4.h>
 
@@ -575,7 +576,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   else
     qmsg = qtypes[qtype];
 
-  if (qtype != 1)                  /* Not an A request */
+  if (qtype != 1 && qtype != 28)   /* Not an A or AAAA request */
 /* TODO Logging of non-A pkts is configurable */
     goto send_verdict;
 
