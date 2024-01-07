@@ -12,7 +12,8 @@
 
 # Precede function names with nfq_ to not pollute the namespace
 
-q=q
+q=q   # Run q in quiet mode
+Q=/usr/bin/q
 
 nfq_main()\
 {
@@ -43,12 +44,12 @@ nfq_munge_named_conf()\
   [ -n "$new_domain_name_servers" ] || return 0
 
   # Empty out the global (i.e. first) forwarders line
-  /usr/local/bin/q -no${q}i'l,forwarders^J^NC^NU^G{^X^K };^Js^J' /etc/named.conf 2>/dev/null
+  $Q -no${q}i'l,forwarders^J^NC^NU^G{^X^K };^Js^J' /etc/named.conf 2>/dev/null
 
   # Add new domain name servers as forwarders in the order given
   for i in $new_domain_name_servers
   do
-    /usr/local/bin/q -no${q}i'l,forwarders^J^NC^NU^G}^E'"$i; "'^Js^J' /etc/named.conf 2>/dev/null
+    $Q -no${q}i'l,forwarders^J^NC^NU^G}^E'"$i; "'^Js^J' /etc/named.conf 2>/dev/null
   done
 
   # Restart named to read new conf
