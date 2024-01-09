@@ -18,11 +18,9 @@
 #include <libmnl/libmnl.h>
 #include <linux/if_ether.h>
 #include <linux/netfilter.h>
-#include <linux/netfilter/nfnetlink.h>
 #include <libnetfilter_queue/pktbuff.h>
 #include <linux/netfilter/nfnetlink_queue.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
-#include <libnetfilter_queue/linux_nfnetlink_queue.h>
 #include <libnetfilter_queue/libnetfilter_queue_udp.h>
 #include <libnetfilter_queue/libnetfilter_queue_ipv4.h>
 
