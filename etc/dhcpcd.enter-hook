@@ -12,6 +12,9 @@
 
 # Precede function names with nfq_ to not pollute the namespace
 
+# Get out now if using Google DNS
+grep -Eq '8\.8\.8\.8' /etc/named.conf && return
+
 q=q   # Run q in quiet mode
 Q=/usr/bin/q
 
