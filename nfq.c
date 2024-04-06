@@ -81,13 +81,25 @@ static chainbase saved_queries = { &saved_queries, &saved_queries };
 static chainbase free_blocks = { &free_blocks, &free_blocks };
 static struct advert *ads = NULL;
 static struct advert *aa;          /* Temp */
+static size_t sperrume;            /* Spare room (in Rx buffer) */
+static struct sockaddr_nl snl = {.nl_family = AF_NETLINK };
+static struct iovec iov[2];
+static const struct msghdr msg = {
+  .msg_name = &snl,
+  .msg_namelen = sizeof snl,
+  .msg_iov = iov,
+  .msg_iovlen = 2,
+  .msg_control = NULL,
+  .msg_controllen = 0,
+  .msg_flags = 0,
+};                                 /* static const struct msghdr msg  */
 
 /* Static prototypes */
 
 static void putblk(savedq * sq);
 static savedq *getblk(void);
 static int queue_cb(const struct nlmsghdr *nlh, void *data);
-static void nfq_send_verdict(int queue_num, uint32_t id, bool accept);
+static void my_send_verdict(int queue_num, uint32_t id, bool accept);
 static struct nlmsghdr *nfq_hdr_put(int type, uint32_t queue_num);
 
 /* ********************************** main ********************************** */
@@ -264,6 +276,7 @@ main(int argc, char *argv[])
       perror("mnl_socket_recvfrom");
       exit(EXIT_FAILURE);
     }
+    sperrume = sizeof buf - ret;
 
     ret = mnl_cb_run(buf, ret, 0, portid, queue_cb, NULL);
     if (ret < 0)
@@ -295,20 +308,35 @@ nfq_hdr_put(int type, uint32_t queue_num)
   return nlh;
 }
 
-/* **************************** nfq_send_verdict **************************** */
+/* ***************************** my_send_verdict **************************** */
 
 static void
-nfq_send_verdict(int queue_num, uint32_t id, bool accept)
+my_send_verdict(int queue_num, uint32_t id, bool accept)
 {
   struct nlmsghdr *nlh;
 
   nlh = nfq_hdr_put(NFQNL_MSG_VERDICT, queue_num);
 
-  if (accept && pktb_mangled(pktb))
-    nfq_nlmsg_verdict_put_pkt(nlh, pktb_data(pktb), pktb_len(pktb));
   nfq_nlmsg_verdict_put(nlh, id, accept ? NF_ACCEPT : NF_DROP);
+  if (accept && pktb_mangled(pktb))
+  {
+    struct nlattr *attrib = mnl_nlmsg_get_payload_tail(nlh);
+    size_t len = pktb_len(pktb);
 
-  if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
+    mnl_attr_put(nlh, NFQA_PAYLOAD, 0, NULL);
+    iov[0].iov_base = nlh;
+    iov[0].iov_len = nlh->nlmsg_len;
+    iov[1].iov_base = pktb_data(pktb);
+    iov[1].iov_len = len;
+    nlh->nlmsg_len += len;         /* Must do *after* setting up iovs */
+    attrib->nla_len += len;        /* Can do any time */
+    if (sendmsg(mnl_socket_get_fd(nl), &msg, 0) < 0)
+    {
+      perror("sendmsg");
+      exit(EXIT_FAILURE);
+    }                     /* if (sendmsg(mnl_socket_get_fd(nl), &msg, 0) < 0) */
+  }                                /* if (accept && pktb_mangled(pktb)) */
+  else if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
   {
     perror("mnl_socket_send");
     exit(EXIT_FAILURE);
@@ -404,6 +432,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   char *component[128];            /* Enough for a.b.c.d... */
   int num_components;
   uint16_t plen;
+  char pb[pktb_head_size()];
 
   if (nfq_nlmsg_parse(nlh, attr) < 0)
   {
@@ -469,12 +498,11 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
     LOG("%s", record_buf);
   }                                /* if (!normal) */
 
-/* Copy data to a packet buffer and assemble host name from it */
-/* Allow max name length extra room */
-  pktb = pktb_alloc(AF_INET, payload, plen, 255);
+/* Set up a packet buffer and assemble host name from it */
+  pktb = pktb_setup_raw(pb, AF_INET, payload, plen, sperrume);
   if (!pktb)
   {
-    snprintf(erbuf, sizeof erbuf, "%s. (pktb_alloc)\n", strerror(errno));
+    snprintf(erbuf, sizeof erbuf, "%s. (pktb_setup_raw)\n", strerror(errno));
     GIVE_UP(erbuf);
   }                                /* if (!pktb) */
   if (!(iph = nfq_ip_get_hdr(pktb)))
@@ -643,9 +671,7 @@ log_packet:
   LOG("%s", erbuf);
 
 send_verdict:
-  nfq_send_verdict(ntohs(nfg->res_id), id, accept);
-
-  pktb_free(pktb);
+  my_send_verdict(ntohs(nfg->res_id), id, accept);
 
   return MNL_CB_OK;
-}
+}                                  /* queue_cb() */
