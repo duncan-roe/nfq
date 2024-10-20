@@ -1,4 +1,6 @@
 /* N F Q */
+/* Copyright (C) 2019, 2023-2024 Duncan Roe */
+
 
 /* pragmas */
 
@@ -10,8 +12,9 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <signal.h>
 #include <string.h>
+#include <unistd.h>
 #include <linux/ip.h>
 #include <arpa/inet.h>
 #include <linux/types.h>
@@ -24,16 +27,7 @@
 #include <libnetfilter_queue/libnetfilter_queue_udp.h>
 #include <libnetfilter_queue/libnetfilter_queue_ipv4.h>
 
-/* If bool is a macro, get rid of it */
-
-#ifdef bool
-#undef bool
-#undef true
-#undef false
-#endif
-
 #include "prototypes.h"
-#include "typedefs.h"
 #include "chains.h"
 #include "uthash.h"
 #include "logger.h"
@@ -41,6 +35,7 @@
 /* Macros */
 
 #define OLD 5                      /* Seconds */
+#define SYSCALL(x, y) do x = y; while(x == -1 && errno == EINTR)
 
 /* Typedefs */
 
@@ -69,6 +64,20 @@ struct advert
   UT_hash_handle hh;
 };                                 /* struct advert */
 
+/* Instantiate externals */
+
+FILE *logfile = NULL;
+bool hupseen = false;
+
+/* Static prototypes */
+
+static void putblk(savedq * sq);
+static savedq *getblk(void);
+static int queue_cb(const struct nlmsghdr *nlh, void *data);
+static void my_send_verdict(int queue_num, uint32_t id, bool accept);
+static struct nlmsghdr *nfq_hdr_put(int type, uint32_t queue_num);
+static void handler(int, siginfo_t *, void *);
+
 /* Static Variables */
 
 static struct mnl_socket *nl;
@@ -93,14 +102,10 @@ static const struct msghdr msg = {
   .msg_controllen = 0,
   .msg_flags = 0,
 };                                 /* static const struct msghdr msg  */
-
-/* Static prototypes */
-
-static void putblk(savedq * sq);
-static savedq *getblk(void);
-static int queue_cb(const struct nlmsghdr *nlh, void *data);
-static void my_send_verdict(int queue_num, uint32_t id, bool accept);
-static struct nlmsghdr *nfq_hdr_put(int type, uint32_t queue_num);
+static const struct sigaction act = {
+  .sa_sigaction = handler,
+  .sa_flags = SA_SIGINFO,
+};                                 /* static struct sigaction act */
 
 /* ********************************** main ********************************** */
 
@@ -268,9 +273,13 @@ main(int argc, char *argv[])
  */
   mnl_socket_setsockopt(nl, NETLINK_NO_ENOBUFS, &ret, sizeof(int));
 
+/* Start a new log file on SIGHUP */
+
+  sigaction(SIGHUP, &act, NULL);
+
   for (;;)
   {
-    ret = mnl_socket_recvfrom(nl, buf, sizeof buf);
+    SYSCALL(ret, mnl_socket_recvfrom(nl, buf, sizeof buf));
     if (ret == -1)
     {
       perror("mnl_socket_recvfrom");
@@ -278,7 +287,9 @@ main(int argc, char *argv[])
     }
     sperrume = sizeof buf - ret;
 
+/* EINTR from mnl_cb_run() is special, so don't use SYSCALL here */
     ret = mnl_cb_run(buf, ret, 0, portid, queue_cb, NULL);
+
     if (ret < 0)
     {
       perror("mnl_cb_run");
@@ -675,3 +686,15 @@ send_verdict:
 
   return MNL_CB_OK;
 }                                  /* queue_cb() */
+
+/* ********************************* handler ******************************** */
+
+/* Use the long form of handler, */
+/* because it's more standardised than the short form. */
+/* For example, it's compatible with solaris. */
+
+static void
+handler(int sig, siginfo_t *unus1, void *unus2)
+{
+  hupseen = true;
+}              /* static void handler(int sig, siginfo_t *unus1, void *unus2) */
