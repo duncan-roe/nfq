@@ -18,5 +18,6 @@ extern double time_now;
 extern double base_time;           /* Add to time_now to get wall clock */
 extern FILE *logfile;
 extern bool hupseen;
+extern bool re_read_config;
 
 #endif

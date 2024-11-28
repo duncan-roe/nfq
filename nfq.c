@@ -68,9 +68,12 @@ struct advert
 
 FILE *logfile = NULL;
 bool hupseen = false;
+bool re_read_config = false;
 
 /* Static prototypes */
 
+static void free_config(void);
+static void read_config(void);
 static void putblk(savedq * sq);
 static savedq *getblk(void);
 static int queue_cb(const struct nlmsghdr *nlh, void *data);
@@ -115,12 +118,6 @@ main(int argc, char *argv[])
   struct nlmsghdr *nlh;
   int ret;
   unsigned int portid, queue_num;
-  FILE *stream;
-  struct advert *a;
-  char *p;
-  char *q;
-  int pos;
-  const char *const rcfile = "/etc/nfq.conf";
 
   if (argc != 2)
   {
@@ -136,99 +133,7 @@ main(int argc, char *argv[])
     exit(1);
 
 /* Open and read the list of sites to be diverted */
-
-  if (!(stream = fopen(rcfile, "r")))
-  {
-    fprintf(stderr, "%s. %s (fopen)\n", strerror(errno), rcfile);
-    exit(EXIT_FAILURE);
-  }                                /* if (!(stream = fopen(argv[2], "r"))) */
-  for (;;)
-  {
-    if (!fgets(buf, sizeof buf, stream))
-      break;                       /* Assume EOF */
-
-    buf[strlen(buf) - 1] = 0;      /* Remove trlg newline */
-
-    if (!(p = strtok(buf, ", ")))
-      continue;                    /* Blank line */
-
-    if (*p == '#')
-      continue;                    /* Comment */
-
-    HASH_FIND_STR(ads, p, aa);
-    if (aa)
-    {
-      fprintf(stderr, "Ignoring duplicate entry for %s\n", p);
-      continue;
-    }                              /* if (HASH_FIND_PTR(ads, name, a->name) */
-
-    if (!(a = malloc(sizeof *a)))
-    {
-      perror("malloc");
-      exit(EXIT_FAILURE);
-    }                              /* if (!(a = malloc(sizeof *a))) */
-
-    if (!(a->name = malloc(strlen(p) + 1)))
-    {
-      perror("malloc");
-      exit(EXIT_FAILURE);
-    }                              /* if (!(a->name = malloc(strlen(p) + 1))) */
-    strcpy(a->name, p);
-
-    if (!(p = strtok(NULL, ", ")))
-    {
-      fprintf(stderr, "No replacement host for %s\n", a->name);
-      free(a->name);
-      free(a);
-      continue;
-    }                              /* if (!(p = strtok(buf, ", "))) */
-
-/* 1 char for trlg NUL, 1 char for leading length below */
-    ret = strlen(p) + 2;
-
-    if (!(q = strtok(p, ".")))     /* Host simple name - stays in p */
-    {
-      fprintf(stderr, "No components (?) in hostname \"%s\"\n", p);
-      free(a->name);
-      free(a);
-      continue;
-    }                              /* if (!(q = strtok(p, "."))) */
-
-    if (!(q = strtok(NULL, ".")))  /* 1st domain component */
-    {
-      fprintf(stderr, "only one component in hostname \"%s\"\n", p);
-      free(a->name);
-      free(a);
-      continue;
-    }                              /* if (!(q = strtok(p, "."))) */
-
-    if (!(a->repname = malloc(ret)))
-    {
-      perror("malloc");
-      exit(EXIT_FAILURE);
-    }                              /* if (!(a->name = malloc(strlen(p) + 1))) */
-
-/* Insert simple host name */
-
-    pos = 0;                      /* Tracks where to put next count or string */
-    ret = strlen(p);
-    a->repname[pos++] = ret;
-    strcpy(&a->repname[pos], p);
-    pos += ret;
-
-/* Insert all the domain parts */
-
-    do
-    {
-      ret = strlen(q);
-      a->repname[pos++] = ret;
-      strcpy(&a->repname[pos], q);
-      pos += ret;
-    }
-    while ((q = strtok(NULL, ".")));
-
-    HASH_ADD_STR(ads, name, a);
-  }                                /* for (;;) */
+  read_config();
 
 /* Config file read - continue with netfilter code */
 
@@ -698,3 +603,118 @@ handler(int sig, siginfo_t *unus1, void *unus2)
 {
   hupseen = true;
 }              /* static void handler(int sig, siginfo_t *unus1, void *unus2) */
+
+/* ******************************* read_config ****************************** */
+
+static void
+read_config(void)
+{
+  FILE *stream;
+  struct advert *a;
+  char *p;
+  char *q;
+  int pos;
+  const char *const rcfile = "/etc/nfq.conf";
+  int rc;
+
+  if (!(stream = fopen(rcfile, "r")))
+  {
+    fprintf(stderr, "%s. %s (fopen)\n", strerror(errno), rcfile);
+    exit(EXIT_FAILURE);
+  }                                /* if (!(stream = fopen(argv[2], "r"))) */
+  for (;;)
+  {
+    if (!fgets(buf, sizeof buf, stream))
+      break;                       /* Assume EOF */
+
+    buf[strlen(buf) - 1] = 0;      /* Remove trlg newline */
+
+    if (!(p = strtok(buf, ", ")))
+      continue;                    /* Blank line */
+
+    if (*p == '#')
+      continue;                    /* Comment */
+
+    HASH_FIND_STR(ads, p, aa);
+    if (aa)
+    {
+      fprintf(stderr, "Ignoring duplicate entry for %s\n", p);
+      continue;
+    }                              /* if (HASH_FIND_PTR(ads, name, a->name) */
+
+    if (!(a = malloc(sizeof *a)))
+    {
+      perror("malloc");
+      exit(EXIT_FAILURE);
+    }                              /* if (!(a = malloc(sizeof *a))) */
+
+    if (!(a->name = malloc(strlen(p) + 1)))
+    {
+      perror("malloc");
+      exit(EXIT_FAILURE);
+    }                              /* if (!(a->name = malloc(strlen(p) + 1))) */
+    strcpy(a->name, p);
+
+    if (!(p = strtok(NULL, ", ")))
+    {
+      fprintf(stderr, "No replacement host for %s\n", a->name);
+      free(a->name);
+      free(a);
+      continue;
+    }                              /* if (!(p = strtok(buf, ", "))) */
+
+/* 1 char for trlg NUL, 1 char for leading length below */
+    rc = strlen(p) + 2;
+
+    if (!(q = strtok(p, ".")))     /* Host simple name - stays in p */
+    {
+      fprintf(stderr, "No components (?) in hostname \"%s\"\n", p);
+      free(a->name);
+      free(a);
+      continue;
+    }                              /* if (!(q = strtok(p, "."))) */
+
+    if (!(q = strtok(NULL, ".")))  /* 1st domain component */
+    {
+      fprintf(stderr, "only one component in hostname \"%s\"\n", p);
+      free(a->name);
+      free(a);
+      continue;
+    }                              /* if (!(q = strtok(p, "."))) */
+
+    if (!(a->repname = malloc(rc)))
+    {
+      perror("malloc");
+      exit(EXIT_FAILURE);
+    }                              /* if (!(a->name = malloc(strlen(p) + 1))) */
+
+/* Insert simple host name */
+
+    pos = 0;                      /* Tracks where to put next count or string */
+    rc = strlen(p);
+    a->repname[pos++] = rc;
+    strcpy(&a->repname[pos], p);
+    pos += rc;
+
+/* Insert all the domain parts */
+
+    do
+    {
+      rc = strlen(q);
+      a->repname[pos++] = rc;
+      strcpy(&a->repname[pos], q);
+      pos += rc;
+    }
+    while ((q = strtok(NULL, ".")));
+
+    HASH_ADD_STR(ads, name, a);
+  }                                /* for (;;) */
+  fclose(stream);
+}                                  /* static void read_config(void) */
+
+/* ******************************* free_config ****************************** */
+
+static void free_config(void)
+{
+  ;
+}                                  /* static void free_config(void) */
