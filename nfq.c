@@ -92,6 +92,7 @@ static struct pkt_buff *pktb;
 static chainbase saved_queries = { &saved_queries, &saved_queries };
 static chainbase free_blocks = { &free_blocks, &free_blocks };
 static struct advert *ads = NULL;
+static struct advert *a;
 static struct advert *aa;          /* Temp */
 static size_t sperrume;            /* Spare room (in Rx buffer) */
 static struct sockaddr_nl snl = {.nl_family = AF_NETLINK };
@@ -200,6 +201,13 @@ main(int argc, char *argv[])
       perror("mnl_cb_run");
       exit(EXIT_FAILURE);
     }
+
+    if (re_read_config)
+    {
+      re_read_config = false;
+      free_config();
+      read_config();
+    }                              /* if (re_read_config) */
   }
 
   mnl_socket_close(nl);
@@ -610,7 +618,6 @@ static void
 read_config(void)
 {
   FILE *stream;
-  struct advert *a;
   char *p;
   char *q;
   int pos;
@@ -718,4 +725,10 @@ read_config(void)
 static void free_config(void)
 {
   ;
+      HASH_ITER(hh, ads, a, aa)
+      {
+        HASH_DEL(ads, a);
+        free(a->name);
+        free(a);
+      }                            /* HASH_ITER(hh, ads, a, aa) */
 }                                  /* static void free_config(void) */

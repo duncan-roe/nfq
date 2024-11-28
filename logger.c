@@ -27,9 +27,11 @@ void logger()
 /* Open / re-open log file if required */
   if (hupseen)
   {
-    fclose(logfile);
+    if(logfile)                    /* Only gets opened after msg rx'd */
+      fclose(logfile);
     logfile = NULL;
     hupseen = false;
+    re_read_config = true;
   }                                /* if (hupseen) */
   if (!logfile)
   {
