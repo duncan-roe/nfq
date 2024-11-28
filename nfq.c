@@ -640,7 +640,7 @@ read_config(void)
     {
       fprintf(stderr, "Ignoring duplicate entry for %s\n", p);
       continue;
-    }                              /* if (HASH_FIND_PTR(ads, name, a->name) */
+    }                              /* if (HASH_FIND_STR(ads, name, a->name) */
 
     if (!(a = malloc(sizeof *a)))
     {
@@ -707,7 +707,8 @@ read_config(void)
     }
     while ((q = strtok(NULL, ".")));
 
-    HASH_ADD_STR(ads, name, a);
+    //HASH_ADD_STR(ads, name, a);
+    HASH_ADD_KEYPTR(hh, ads, a->name, strlen(a->name), a);
   }                                /* for (;;) */
   fclose(stream);
 }                                  /* static void read_config(void) */
