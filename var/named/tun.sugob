@@ -1,6 +1,6 @@
 $ORIGIN .
 $TTL 86400	; 1 day
-254.255.10.in-addr.arpa IN SOA	tallstar. fred_nerk.bogus.nut. (
+253.255.10.in-addr.arpa IN SOA	tallstar. fred_nerk.bogus.nut. (
 				228	   ; serial
 				10800	   ; refresh (3 hours)
 				900	   ; retry (15 minutes)
