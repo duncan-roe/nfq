@@ -5,6 +5,14 @@
 
 #include <stdint.h>
 
+/* If bool is a macro, get rid of it */
+
+#ifdef bool
+#undef bool
+#undef true
+#undef false
+#endif
+
 /* Typedefs */
 
 typedef enum bool

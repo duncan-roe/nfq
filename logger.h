@@ -16,5 +16,8 @@ do { snprintf(log_buffer, sizeof log_buffer, fmt, ##args); logger(); } while (0)
 extern char log_buffer[32768];
 extern double time_now;
 extern double base_time;           /* Add to time_now to get wall clock */
+extern FILE *logfile;
+extern bool hupseen;
+extern bool re_read_config;
 
 #endif

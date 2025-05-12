@@ -1,4 +1,6 @@
 /* N F Q */
+/* Copyright (C) 2019, 2023-2024 Duncan Roe */
+
 
 /* pragmas */
 
@@ -10,31 +12,22 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <signal.h>
 #include <string.h>
+#include <unistd.h>
 #include <linux/ip.h>
 #include <arpa/inet.h>
 #include <linux/types.h>
 #include <libmnl/libmnl.h>
 #include <linux/if_ether.h>
 #include <linux/netfilter.h>
-#include <linux/netfilter/nfnetlink.h>
 #include <libnetfilter_queue/pktbuff.h>
 #include <linux/netfilter/nfnetlink_queue.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
 #include <libnetfilter_queue/libnetfilter_queue_udp.h>
 #include <libnetfilter_queue/libnetfilter_queue_ipv4.h>
 
-/* If bool is a macro, get rid of it */
-
-#ifdef bool
-#undef bool
-#undef true
-#undef false
-#endif
-
 #include "prototypes.h"
-#include "typedefs.h"
 #include "chains.h"
 #include "uthash.h"
 #include "logger.h"
@@ -42,6 +35,7 @@
 /* Macros */
 
 #define OLD 5                      /* Seconds */
+#define SYSCALL(x, y) do x = y; while(x == -1 && errno == EINTR)
 
 /* Typedefs */
 
@@ -70,6 +64,23 @@ struct advert
   UT_hash_handle hh;
 };                                 /* struct advert */
 
+/* Instantiate externals */
+
+FILE *logfile = NULL;
+bool hupseen = false;
+bool re_read_config = false;
+
+/* Static prototypes */
+
+static void free_config(void);
+static void read_config(void);
+static void putblk(savedq * sq);
+static savedq *getblk(void);
+static int queue_cb(const struct nlmsghdr *nlh, void *data);
+static void my_send_verdict(int queue_num, uint32_t id, bool accept);
+static struct nlmsghdr *nfq_hdr_put(int type, uint32_t queue_num);
+static void handler(int, siginfo_t *, void *);
+
 /* Static Variables */
 
 static struct mnl_socket *nl;
@@ -81,15 +92,24 @@ static struct pkt_buff *pktb;
 static chainbase saved_queries = { &saved_queries, &saved_queries };
 static chainbase free_blocks = { &free_blocks, &free_blocks };
 static struct advert *ads = NULL;
+static struct advert *a;
 static struct advert *aa;          /* Temp */
-
-/* Static prototypes */
-
-static void putblk(savedq * sq);
-static savedq *getblk(void);
-static int queue_cb(const struct nlmsghdr *nlh, void *data);
-static void nfq_send_verdict(int queue_num, uint32_t id, bool accept);
-static struct nlmsghdr *nfq_hdr_put(int type, uint32_t queue_num);
+static size_t sperrume;            /* Spare room (in Rx buffer) */
+static struct sockaddr_nl snl = {.nl_family = AF_NETLINK };
+static struct iovec iov[2];
+static const struct msghdr msg = {
+  .msg_name = &snl,
+  .msg_namelen = sizeof snl,
+  .msg_iov = iov,
+  .msg_iovlen = 2,
+  .msg_control = NULL,
+  .msg_controllen = 0,
+  .msg_flags = 0,
+};                                 /* static const struct msghdr msg  */
+static const struct sigaction act = {
+  .sa_sigaction = handler,
+  .sa_flags = SA_SIGINFO,
+};                                 /* static struct sigaction act */
 
 /* ********************************** main ********************************** */
 
@@ -99,12 +119,6 @@ main(int argc, char *argv[])
   struct nlmsghdr *nlh;
   int ret;
   unsigned int portid, queue_num;
-  FILE *stream;
-  struct advert *a;
-  char *p;
-  char *q;
-  int pos;
-  const char *const rcfile = "/etc/nfq.conf";
 
   if (argc != 2)
   {
@@ -120,99 +134,7 @@ main(int argc, char *argv[])
     exit(1);
 
 /* Open and read the list of sites to be diverted */
-
-  if (!(stream = fopen(rcfile, "r")))
-  {
-    fprintf(stderr, "%s. %s (fopen)\n", strerror(errno), rcfile);
-    exit(EXIT_FAILURE);
-  }                                /* if (!(stream = fopen(argv[2], "r"))) */
-  for (;;)
-  {
-    if (!fgets(buf, sizeof buf, stream))
-      break;                       /* Assume EOF */
-
-    buf[strlen(buf) - 1] = 0;      /* Remove trlg newline */
-
-    if (!(p = strtok(buf, ", ")))
-      continue;                    /* Blank line */
-
-    if (*p == '#')
-      continue;                    /* Comment */
-
-    HASH_FIND_STR(ads, p, aa);
-    if (aa)
-    {
-      fprintf(stderr, "Ignoring duplicate entry for %s\n", p);
-      continue;
-    }                              /* if (HASH_FIND_PTR(ads, name, a->name) */
-
-    if (!(a = malloc(sizeof *a)))
-    {
-      perror("malloc");
-      exit(EXIT_FAILURE);
-    }                              /* if (!(a = malloc(sizeof *a))) */
-
-    if (!(a->name = malloc(strlen(p) + 1)))
-    {
-      perror("malloc");
-      exit(EXIT_FAILURE);
-    }                              /* if (!(a->name = malloc(strlen(p) + 1))) */
-    strcpy(a->name, p);
-
-    if (!(p = strtok(NULL, ", ")))
-    {
-      fprintf(stderr, "No replacement host for %s\n", a->name);
-      free(a->name);
-      free(a);
-      continue;
-    }                              /* if (!(p = strtok(buf, ", "))) */
-
-/* 1 char for trlg NUL, 1 char for leading length below */
-    ret = strlen(p) + 2;
-
-    if (!(q = strtok(p, ".")))     /* Host simple name - stays in p */
-    {
-      fprintf(stderr, "No components (?) in hostname \"%s\"\n", p);
-      free(a->name);
-      free(a);
-      continue;
-    }                              /* if (!(q = strtok(p, "."))) */
-
-    if (!(q = strtok(NULL, ".")))  /* 1st domain component */
-    {
-      fprintf(stderr, "only one component in hostname \"%s\"\n", p);
-      free(a->name);
-      free(a);
-      continue;
-    }                              /* if (!(q = strtok(p, "."))) */
-
-    if (!(a->repname = malloc(ret)))
-    {
-      perror("malloc");
-      exit(EXIT_FAILURE);
-    }                              /* if (!(a->name = malloc(strlen(p) + 1))) */
-
-/* Insert simple host name */
-
-    pos = 0;                      /* Tracks where to put next count or string */
-    ret = strlen(p);
-    a->repname[pos++] = ret;
-    strcpy(&a->repname[pos], p);
-    pos += ret;
-
-/* Insert all the domain parts */
-
-    do
-    {
-      ret = strlen(q);
-      a->repname[pos++] = ret;
-      strcpy(&a->repname[pos], q);
-      pos += ret;
-    }
-    while ((q = strtok(NULL, ".")));
-
-    HASH_ADD_STR(ads, name, a);
-  }                                /* for (;;) */
+  read_config();
 
 /* Config file read - continue with netfilter code */
 
@@ -257,21 +179,35 @@ main(int argc, char *argv[])
  */
   mnl_socket_setsockopt(nl, NETLINK_NO_ENOBUFS, &ret, sizeof(int));
 
+/* Start a new log file on SIGHUP */
+
+  sigaction(SIGHUP, &act, NULL);
+
   for (;;)
   {
-    ret = mnl_socket_recvfrom(nl, buf, sizeof buf);
+    SYSCALL(ret, mnl_socket_recvfrom(nl, buf, sizeof buf));
     if (ret == -1)
     {
       perror("mnl_socket_recvfrom");
       exit(EXIT_FAILURE);
     }
+    sperrume = sizeof buf - ret;
 
+/* EINTR from mnl_cb_run() is special, so don't use SYSCALL here */
     ret = mnl_cb_run(buf, ret, 0, portid, queue_cb, NULL);
+
     if (ret < 0)
     {
       perror("mnl_cb_run");
       exit(EXIT_FAILURE);
     }
+
+    if (re_read_config)
+    {
+      re_read_config = false;
+      free_config();
+      read_config();
+    }                              /* if (re_read_config) */
   }
 
   mnl_socket_close(nl);
@@ -296,20 +232,35 @@ nfq_hdr_put(int type, uint32_t queue_num)
   return nlh;
 }
 
-/* **************************** nfq_send_verdict **************************** */
+/* ***************************** my_send_verdict **************************** */
 
 static void
-nfq_send_verdict(int queue_num, uint32_t id, bool accept)
+my_send_verdict(int queue_num, uint32_t id, bool accept)
 {
   struct nlmsghdr *nlh;
 
   nlh = nfq_hdr_put(NFQNL_MSG_VERDICT, queue_num);
 
-  if (accept && pktb_mangled(pktb))
-    nfq_nlmsg_verdict_put_pkt(nlh, pktb_data(pktb), pktb_len(pktb));
   nfq_nlmsg_verdict_put(nlh, id, accept ? NF_ACCEPT : NF_DROP);
+  if (accept && pktb_mangled(pktb))
+  {
+    struct nlattr *attrib = mnl_nlmsg_get_payload_tail(nlh);
+    size_t len = pktb_len(pktb);
 
-  if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
+    mnl_attr_put(nlh, NFQA_PAYLOAD, 0, NULL);
+    iov[0].iov_base = nlh;
+    iov[0].iov_len = nlh->nlmsg_len;
+    iov[1].iov_base = pktb_data(pktb);
+    iov[1].iov_len = len;
+    nlh->nlmsg_len += len;         /* Must do *after* setting up iovs */
+    attrib->nla_len += len;        /* Can do any time */
+    if (sendmsg(mnl_socket_get_fd(nl), &msg, 0) < 0)
+    {
+      perror("sendmsg");
+      exit(EXIT_FAILURE);
+    }                     /* if (sendmsg(mnl_socket_get_fd(nl), &msg, 0) < 0) */
+  }                                /* if (accept && pktb_mangled(pktb)) */
+  else if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0)
   {
     perror("mnl_socket_send");
     exit(EXIT_FAILURE);
@@ -405,6 +356,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   char *component[128];            /* Enough for a.b.c.d... */
   int num_components;
   uint16_t plen;
+  char pb[pktb_head_size()];
 
   if (nfq_nlmsg_parse(nlh, attr) < 0)
   {
@@ -470,12 +422,11 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
     LOG("%s", record_buf);
   }                                /* if (!normal) */
 
-/* Copy data to a packet buffer and assemble host name from it */
-/* Allow max name length extra room */
-  pktb = pktb_alloc(AF_INET, payload, plen, 255);
+/* Set up a packet buffer and assemble host name from it */
+  pktb = pktb_setup_raw(pb, AF_INET, payload, plen, sperrume);
   if (!pktb)
   {
-    snprintf(erbuf, sizeof erbuf, "%s. (pktb_alloc)\n", strerror(errno));
+    snprintf(erbuf, sizeof erbuf, "%s. (pktb_setup_raw)\n", strerror(errno));
     GIVE_UP(erbuf);
   }                                /* if (!pktb) */
   if (!(iph = nfq_ip_get_hdr(pktb)))
@@ -575,7 +526,7 @@ queue_cb(const struct nlmsghdr *nlh, void *data)
   else
     qmsg = qtypes[qtype];
 
-  if (qtype != 1)                  /* Not an A request */
+  if (qtype != 1 && qtype != 28)   /* Not an A or AAAA request */
 /* TODO Logging of non-A pkts is configurable */
     goto send_verdict;
 
@@ -644,9 +595,140 @@ log_packet:
   LOG("%s", erbuf);
 
 send_verdict:
-  nfq_send_verdict(ntohs(nfg->res_id), id, accept);
-
-  pktb_free(pktb);
+  my_send_verdict(ntohs(nfg->res_id), id, accept);
 
   return MNL_CB_OK;
-}
+}                                  /* queue_cb() */
+
+/* ********************************* handler ******************************** */
+
+/* Use the long form of handler, */
+/* because it's more standardised than the short form. */
+/* For example, it's compatible with solaris. */
+
+static void
+handler(int sig, siginfo_t *unus1, void *unus2)
+{
+  hupseen = true;
+}              /* static void handler(int sig, siginfo_t *unus1, void *unus2) */
+
+/* ******************************* read_config ****************************** */
+
+static void
+read_config(void)
+{
+  FILE *stream;
+  char *p;
+  char *q;
+  int pos;
+  const char *const rcfile = "/etc/nfq.conf";
+  int rc;
+
+  if (!(stream = fopen(rcfile, "r")))
+  {
+    fprintf(stderr, "%s. %s (fopen)\n", strerror(errno), rcfile);
+    exit(EXIT_FAILURE);
+  }                                /* if (!(stream = fopen(argv[2], "r"))) */
+  for (;;)
+  {
+    if (!fgets(buf, sizeof buf, stream))
+      break;                       /* Assume EOF */
+
+    buf[strlen(buf) - 1] = 0;      /* Remove trlg newline */
+
+    if (!(p = strtok(buf, ", ")))
+      continue;                    /* Blank line */
+
+    if (*p == '#')
+      continue;                    /* Comment */
+
+    HASH_FIND_STR(ads, p, aa);
+    if (aa)
+    {
+      fprintf(stderr, "Ignoring duplicate entry for %s\n", p);
+      continue;
+    }                              /* if (HASH_FIND_STR(ads, name, a->name) */
+
+    if (!(a = malloc(sizeof *a)))
+    {
+      perror("malloc");
+      exit(EXIT_FAILURE);
+    }                              /* if (!(a = malloc(sizeof *a))) */
+
+    if (!(a->name = malloc(strlen(p) + 1)))
+    {
+      perror("malloc");
+      exit(EXIT_FAILURE);
+    }                              /* if (!(a->name = malloc(strlen(p) + 1))) */
+    strcpy(a->name, p);
+
+    if (!(p = strtok(NULL, ", ")))
+    {
+      fprintf(stderr, "No replacement host for %s\n", a->name);
+      free(a->name);
+      free(a);
+      continue;
+    }                              /* if (!(p = strtok(buf, ", "))) */
+
+/* 1 char for trlg NUL, 1 char for leading length below */
+    rc = strlen(p) + 2;
+
+    if (!(q = strtok(p, ".")))     /* Host simple name - stays in p */
+    {
+      fprintf(stderr, "No components (?) in hostname \"%s\"\n", p);
+      free(a->name);
+      free(a);
+      continue;
+    }                              /* if (!(q = strtok(p, "."))) */
+
+    if (!(q = strtok(NULL, ".")))  /* 1st domain component */
+    {
+      fprintf(stderr, "only one component in hostname \"%s\"\n", p);
+      free(a->name);
+      free(a);
+      continue;
+    }                              /* if (!(q = strtok(p, "."))) */
+
+    if (!(a->repname = malloc(rc)))
+    {
+      perror("malloc");
+      exit(EXIT_FAILURE);
+    }                              /* if (!(a->name = malloc(strlen(p) + 1))) */
+
+/* Insert simple host name */
+
+    pos = 0;                      /* Tracks where to put next count or string */
+    rc = strlen(p);
+    a->repname[pos++] = rc;
+    strcpy(&a->repname[pos], p);
+    pos += rc;
+
+/* Insert all the domain parts */
+
+    do
+    {
+      rc = strlen(q);
+      a->repname[pos++] = rc;
+      strcpy(&a->repname[pos], q);
+      pos += rc;
+    }
+    while ((q = strtok(NULL, ".")));
+
+    //HASH_ADD_STR(ads, name, a);
+    HASH_ADD_KEYPTR(hh, ads, a->name, strlen(a->name), a);
+  }                                /* for (;;) */
+  fclose(stream);
+}                                  /* static void read_config(void) */
+
+/* ******************************* free_config ****************************** */
+
+static void free_config(void)
+{
+  ;
+      HASH_ITER(hh, ads, a, aa)
+      {
+        HASH_DEL(ads, a);
+        free(a->name);
+        free(a);
+      }                            /* HASH_ITER(hh, ads, a, aa) */
+}                                  /* static void free_config(void) */
