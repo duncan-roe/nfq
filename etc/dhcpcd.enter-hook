@@ -23,19 +23,11 @@ nfq_main()\
   # Honour -C named.conf
   echo $skip_hooks | grep -q named.conf && return
 
-  # Update named.conf on if_up
-  if $if_up
-  then
-    if_up=false
-    nfq_munge_named_conf
-  fi
-
-  # Restore named.conf on if_down
-  if $if_down
-  then
-    if_down=false
-    nfq_restore_named_conf
-  fi
+  # Update named.conf on BOUND or STOPPED
+  case $reason in
+  BOUND) nfq_munge_named_conf ;;
+  STOPPED) nfq_restore_named_conf ;;
+  esac
 }
 
 nfq_munge_named_conf()\
